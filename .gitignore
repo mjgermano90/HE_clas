@@ -1,0 +1,7 @@
+.Rproj.user
+.Rhistory
+.RData
+02_data/
+03_results/
+renv/library/
+renv/staging/
