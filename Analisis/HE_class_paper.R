@@ -269,19 +269,19 @@ perform_normality_tests <- function(data_frame, columns, group_column = NULL) {
   return(results)
 }
 
-"""
-wilcoxon_test_function <- function(data, column, condition_column, condition_value) {
-  # Extract values based on condition
-  condition_true <- data[data[[condition_column]] == condition_value, column]
-  condition_false <- data[data[[condition_column]] != condition_value, column]
-  
-  # Perform Wilcoxon test
-  wilcox_result <- wilcox.test(condition_true, condition_false)
-  
-  # Return the result
-  return(wilcox_result)
-}
-"""
+
+# wilcoxon_test_function <- function(data, column, condition_column, condition_value) {
+#   # Extract values based on condition
+#   condition_true <- data[data[[condition_column]] == condition_value, column]
+#   condition_false <- data[data[[condition_column]] != condition_value, column]
+#   
+#   # Perform Wilcoxon test
+#   wilcox_result <- wilcox.test(condition_true, condition_false)
+#   
+#   # Return the result
+#   return(wilcox_result)
+# }
+
 
 wilcoxon_test_function <- function(data, column, condition_column, condition_value) {
   
@@ -314,19 +314,18 @@ wilcoxon_test_function <- function(data, column, condition_column, condition_val
   ))
 }
 
-"""
-# Call Wilcoxon funcion
-all_results <- list()
-for (col in normality_cols) {
-  # Perform Wilcoxon test for each column
-  wilcox_result <- wilcoxon_test_function(clinical, col, "immune_LumAB_clas", "low")
-  all_results[[col]] <- wilcox_result
-  
-  # Print results
-  cat("Wilcoxon test results for", col, ":\n")
-  print(paste0("p-value: ", all_results[[col]][["p.value"]]))
-}
-"""
+# # Call Wilcoxon funcion
+# all_results <- list()
+# for (col in normality_cols) {
+#   # Perform Wilcoxon test for each column
+#   wilcox_result <- wilcoxon_test_function(clinical, col, "immune_LumAB_clas", "low")
+#   all_results[[col]] <- wilcox_result
+#   
+#   # Print results
+#   cat("Wilcoxon test results for", col, ":\n")
+#   print(paste0("p-value: ", all_results[[col]][["p.value"]]))
+# }
+
 
 #### Load and pre-process data ====
 # Cargo rda
@@ -403,10 +402,10 @@ event_indicator <- clinical$vital_status_binary & (clinical$overall_survival <= 
 surv_obj <- Surv(censored_time,
                  event_indicator)
 
-"""
-surv_obj <- Surv(clinical$censored_time,
-                 clinical$event_indicator)
-"""
+
+# surv_obj <- Surv(clinical$censored_time,
+#                  clinical$event_indicator)
+
 #Obtain pvalue and coefficient for each cell 
 immune_cell_columns <- colnames(clinical)[c(94:105,121)] #ojo 121 es para TIL si no he clasificado en high y low en funcion de Immune score
 univ_cell_results <- list()
@@ -458,7 +457,8 @@ clinical <- clinical %>% filter(!is.na(til_percentage))
 # Initialize a new column for immune classification
 clinical$HE_clas <- NA
 
-"""
+## Esto que aparece abajo, ser� ignorado al correr el codigo, es como comentarlo
+if (FALSE) {
 censored_time <- clinical$censored_time
 clinical$event_indicator_binary <- ifelse(clinical$event_indicator == TRUE, 1,0)
 event_indicator_binary <- clinical$event_indicator_binary
@@ -475,14 +475,16 @@ surv_cut_point <- surv_cutpoint(
 
 HE_clas_cutoff <-summary(surv_cut_point)$cutpoint 
 HE_clas_cutoff#0.2338073 -> ES MUY BAJO, VER HISTOGRAMA Y CLASIFICAR POR LA MEDIANA
-"""
+}
+
+
 range(clinical$til_percentage, na.rm = TRUE)
 hist(clinical$til_percentage, breaks = seq(0,35,1))
-"M1" = "#80b1d3",
-"M2" = "#b3de69", 
-"M3" = "#bc80bd", 
-"M4" = "#66c2a5",
-"M5" = "#fdb462"
+# "M1" = "#80b1d3",
+# "M2" = "#b3de69", 
+# "M3" = "#bc80bd", 
+# "M4" = "#66c2a5",
+# "M5" = "#fdb462"
 
 p <- ggplot(clinical, aes(x = til_percentage)) +
   # Add histogram with proper styling
@@ -509,11 +511,7 @@ ggsave(pathLocalResults("HE clas Results/FigureS1_histogram.pdf"), p, width = 8,
 
 summary(clinical$til_percentage)
 
-"""
-> summary(clinical$til_percentage)
-Min.     1st Qu.  Median  Mean   3rd Qu.    Max.    NA's 
-  0.000   0.397   1.075   2.857   2.821  34.951     100 
-"""
+
 sum(clinical$til_percentage > 10, na.rm = TRUE) #50
 
 HE_clas_cutoff <- median(clinical$til_percentage, na.rm = TRUE)
@@ -534,34 +532,34 @@ cox_fit <- coxph(Surv(censored_time, event_indicator) ~ HE_clas, data = clinical
 summary_cox <- summary(cox_fit)
 summary_cox 
 
-"""
-Interpretation
-Call:
-coxph(formula = Surv(censored_time, event_indicator) ~ HE_clas, 
-    data = clinical)
 
-  n= 669, number of events= 85 
+# Interpretation
+# Call:
+# coxph(formula = Surv(censored_time, event_indicator) ~ HE_clas, 
+#     data = clinical)
+# 
+#   n= 669, number of events= 85 
+# 
+#              coef exp(coef) se(coef)   z Pr(>|z|)       exp(coef) is HR, se(coef) es la desviacion estandar del coef, z is Wald test statistic: higher absolute value means more significant.
+# HE_claslow 0.8301    2.2934   0.2306 3.6 0.000319 ***
+# ---
+# Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+# 
+#            exp(coef) exp(-coef) lower .95 upper .95
+# HE_claslow     2.293      0.436      1.46     3.604
+# 
+# Concordance= 0.6  (se = 0.03 )
+# Likelihood ratio test= 13.76  on 1 df,   p=2e-04
+# Wald test            = 12.96  on 1 df,   p=3e-04
+# Score (logrank) test = 13.68  on 1 df,   p=2e-04
+# 
+# 
+# Concordance (C-index) measures how well the model discriminates between patients with better vs worse survival.Range: 0.5 (no better than chance) to 1 (perfect prediction).
+# Likelihood ratio test: Compares full vs. null model using log-likelihood. Significant improvement.
+# Wald test: Tests if coef / se(coef) is different from 0. Confirms significance of effect.
+# Score (Logrank) test: Based on rank data. Also confirms variable is significantly associated with surviva
 
-             coef exp(coef) se(coef)   z Pr(>|z|)       exp(coef) is HR, se(coef) es la desviacion estandar del coef, z is Wald test statistic: higher absolute value means more significant.
-HE_claslow 0.8301    2.2934   0.2306 3.6 0.000319 ***
----
-Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
-           exp(coef) exp(-coef) lower .95 upper .95
-HE_claslow     2.293      0.436      1.46     3.604
-
-Concordance= 0.6  (se = 0.03 )
-Likelihood ratio test= 13.76  on 1 df,   p=2e-04
-Wald test            = 12.96  on 1 df,   p=3e-04
-Score (logrank) test = 13.68  on 1 df,   p=2e-04
-
-
-Concordance (C-index) measures how well the model discriminates between patients with better vs worse survival.Range: 0.5 (no better than chance) to 1 (perfect prediction).
-Likelihood ratio test: Compares full vs. null model using log-likelihood. Significant improvement.
-Wald test: Tests if coef / se(coef) is different from 0. Confirms significance of effect.
-Score (Logrank) test: Based on rank data. Also confirms variable is significantly associated with surviva
-
-"""
 
 
 # Evaluate different cut off for HE clas and generate the results data frame
@@ -1048,7 +1046,7 @@ summary(contingency_table)
 ### Analisis Cox Multivariado ====
 
 # Debido a que "age_at_index" viola el supuesto de Proportional Hazard para el modelo de Cox los pacientes seran estratificados
-# Crear categorías
+# Crear categorias
 
 # Define cut off
 surv_cut_point <- surv_cutpoint(
@@ -1226,9 +1224,9 @@ grafico_til <- ggplot(df_grafico, aes(x = estimate, y = term)) +
   geom_point(aes(color = Modelo), size = 3, shape = 15, show.legend = FALSE) +
   # Facetado por modelo para replicar la imagen b86dcd
   facet_grid(. ~ Modelo) +
-  # Escala logarítmica constante para todos los modelos (0.8 a 25)
+  # Escala logaritmica constante para todos los modelos (0.8 a 25)
   scale_x_log10(limits = c(0.8, 25), breaks = c(1, 2, 5, 10, 20)) +
-  # Aplicación de LOS colores específicos
+  # Aplicacion de LOS colores especificos
   scale_color_manual(values = mis_colores) +
   theme_bw() +
   theme(
@@ -1420,13 +1418,13 @@ grafico <- ggplot(df_grafico, aes(x = estimate, y = term)) +
   #barras de error (CI)
   geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), 
                  height = 0.2, 
-                 size = 0.3, # ACHIQUE EL TAMAÑO
+                 size = 0.3, # ACHIQUE EL TAMAnO
                  show.legend = FALSE, 
                  color = "black") +
   geom_point(aes(color = Modelo), size = 3, shape = 15, show.legend = FALSE) +
   # Facetado por modelo para replicar la imagen b86dcd
   facet_grid(. ~ Modelo) +
-  # Escala logarítmica constante para todos los modelos (0.8 a 25)
+  # Escala logaritmica constante para todos los modelos (0.8 a 25)
   scale_x_log10(limits = c(0.6, 25), breaks = c(1, 2, 5, 10, 20)) +
   # Aplicación de LOS colores específicos
   scale_color_manual(values = mis_colores) +
@@ -1698,13 +1696,13 @@ perform_normality_tests(clinical_tmb, "total_perMB", "HE_clas")
 ## Wilcoxon test compare TMB between Treg groups
 wilcox_tmb_result <- wilcoxon_test_function(clinical_tmb, "total_perMB", "HE_clas", "low")
 wilcox_tmb_result 
-"""
-Wilcoxon rank sum test with continuity correction
 
-data:  condition_true and condition_false
-W = 41027, p-value = 0.03353
-alternative hypothesis: true location shift is not equal to 0
-"""
+# Wilcoxon rank sum test with continuity correction
+# 
+# data:  condition_true and condition_false
+# W = 41027, p-value = 0.03353
+# alternative hypothesis: true location shift is not equal to 0
+
 # Plot results TMB between high and low immune groups by violin plot
 annotations <- list(
   list(x = 1.5, y = 2, stars = 1, variable = colnames(clinical_tmb)[129]) #ojo con HER ER y PR status cambio el numero de columna
@@ -1832,7 +1830,7 @@ clinical[cols] <- lapply(clinical[cols], function(x) {
   )
 })
 
-## Análsisis estadísticos
+## Análsisis estadisticos
 
 #### Til_percentage between mutated and wt ====
 # Perform Normality test 
@@ -2118,32 +2116,32 @@ ggsave(pathLocalResults("HE clas Results/Figure_2a_mutation_frequency_without_tr
 
 write.csv2(results, file =pathLocalResults("Chi-squared_results between mutated genes and immune group.csv"), row.names = FALSE)
 
-"""
-### Otros analisis que pueden realizarse ###
 
+# ### Otros analisis que pueden realizarse ###
+# 
+# 
+# #### Exclusive/co-occurance event analysis on top 30 mutated genes ====
+# all_interaction <- somaticInteractions(maf = filtered_MAF, top = 20, pvalue = c(0.05), countStats ="sig")
+# sig_all_interaction <- all_interaction[all_interaction$pValue<=0.05,]
+# 
+# high_interaction <- somaticInteractions(maf = MAF_high, top = 20, pvalue = c(0.05), countStats ="sig")
+# sig_high_interaction <- high_interaction[high_interaction$pValue<=0.05,]
+# 
+# low_interaction <- somaticInteractions(maf = MAF_low, top = 20, pvalue = c(0.05))
+# sig_low_interaction <- low_interaction[low_interaction$pValue<=0.05,]
+# 
+# ## Analizar mas detalles en: https://academic.oup.com/bioinformatics/article/29/18/2238/240376
+# 
+# 
+# #### Asociaciones entre mutaciones y características clínicas ====
+# # DE ACUERDO AL PAQUETE MAFTOOLS https://bioconductor.org/packages/devel/bioc/vignettes/maftools/inst/doc/maftools.html#81_Reading_and_summarizing_gistic_output_files
+# 
+# 
+# #### Plot genes cuya frecuencia de mutaciones varíe entre High vs low ====
+# genes <- results_sign$Gene
+# coOncoplot(m1 = MAF_high, m2 = MAF_low, m1Name = 'High', m2Name = 'Low', genes = genes, removeNonMutated = TRUE)
+# coBarplot(m1 = MAF_high, m2 = MAF_low, m1Name = 'High', m2Name = 'Low', genes = genes)
 
-#### Exclusive/co-occurance event analysis on top 30 mutated genes ====
-all_interaction <- somaticInteractions(maf = filtered_MAF, top = 20, pvalue = c(0.05), countStats ="sig")
-sig_all_interaction <- all_interaction[all_interaction$pValue<=0.05,]
-
-high_interaction <- somaticInteractions(maf = MAF_high, top = 20, pvalue = c(0.05), countStats ="sig")
-sig_high_interaction <- high_interaction[high_interaction$pValue<=0.05,]
-
-low_interaction <- somaticInteractions(maf = MAF_low, top = 20, pvalue = c(0.05))
-sig_low_interaction <- low_interaction[low_interaction$pValue<=0.05,]
-
-## Analizar mas detalles en: https://academic.oup.com/bioinformatics/article/29/18/2238/240376
-
-
-#### Asociaciones entre mutaciones y características clínicas ====
-# DE ACUERDO AL PAQUETE MAFTOOLS https://bioconductor.org/packages/devel/bioc/vignettes/maftools/inst/doc/maftools.html#81_Reading_and_summarizing_gistic_output_files
-
-
-#### Plot genes cuya frecuencia de mutaciones varíe entre High vs low ====
-genes <- results_sign$Gene
-coOncoplot(m1 = MAF_high, m2 = MAF_low, m1Name = 'High', m2Name = 'Low', genes = genes, removeNonMutated = TRUE)
-coBarplot(m1 = MAF_high, m2 = MAF_low, m1Name = 'High', m2Name = 'Low', genes = genes)
-"""
 
 ####  Cox for each mutated gene ====
 ### Survival Object 
@@ -2151,7 +2149,7 @@ coBarplot(m1 = MAF_high, m2 = MAF_low, m1Name = 'High', m2Name = 'Low', genes = 
 censored_time <- pmin(clinical$overall_survival, 3650)
 event_indicator <- clinical$vital_status_binary & (clinical$overall_survival <= 3650)
 
-#creamos un objeto "surv" con la funci?n Surv()
+#creamos un objeto "surv" con la funcion Surv()
 surv_obj <- Surv(clinical$censored_time,
                  clinical$event_indicator)
 
@@ -2195,29 +2193,28 @@ cox_results_df <- cox_results_df[order(cox_results_df$P_Value), ]
 # Print the sorted results
 print(cox_results_df)
 
-"""
-> print(cox_results_df)
-     Gene    P_Value        HR    CI_low     CI_upp
-7   KMT2C 0.01388109 0.4546391 0.2559826  0.8074638
-12  MUC5B 0.04871755 0.3480577 0.1403852  0.8629410
-2    CDH1 0.06287353 1.9512986 0.9002415  4.2294942
-13    NEB 0.08159456 3.9390048 0.5481765 28.3043109
-5    TP53 0.17025070 0.6847209 0.4064577  1.1534847
-18  HMCN1 0.22420205 2.7815412 0.3869061 19.9970284
-15 ARID1A 0.30324294 1.9360828 0.4760052  7.8747395
-17   RYR2 0.49883819 1.4548366 0.4594242  4.6069613
-19  USH2A 0.53700221 0.7169448 0.2621887  1.9604573
-1  PIK3CA 0.54587059 0.8715557 0.5594776  1.3577117
-14  NCOR1 0.62892413 1.2697008 0.4650625  3.4665022
-11  RUNX1 0.63224262 1.2669735 0.4639300  3.4600522
-16    FLG 0.63469500 0.7971327 0.3224296  1.9707266
-9  MAP2K4 0.65198488 1.2504545 0.4577803  3.4156914
-6   MUC16 0.73902729 1.1229014 0.5619000  2.2440071
-8  MAP3K1 0.77620274 0.8921538 0.4112192  1.9355572
-10   MUC4 0.87186947 0.9080878 0.2862372  2.8809091
-4   GATA3 0.96364580 1.0134399 0.5703065  1.8008920
-3     TTN 0.97239438 0.9896092 0.5480886  1.7868031
-"""
+
+# > print(cox_results_df)
+#      Gene    P_Value        HR    CI_low     CI_upp
+# 7   KMT2C 0.01388109 0.4546391 0.2559826  0.8074638
+# 12  MUC5B 0.04871755 0.3480577 0.1403852  0.8629410
+# 2    CDH1 0.06287353 1.9512986 0.9002415  4.2294942
+# 13    NEB 0.08159456 3.9390048 0.5481765 28.3043109
+# 5    TP53 0.17025070 0.6847209 0.4064577  1.1534847
+# 18  HMCN1 0.22420205 2.7815412 0.3869061 19.9970284
+# 15 ARID1A 0.30324294 1.9360828 0.4760052  7.8747395
+# 17   RYR2 0.49883819 1.4548366 0.4594242  4.6069613
+# 19  USH2A 0.53700221 0.7169448 0.2621887  1.9604573
+# 1  PIK3CA 0.54587059 0.8715557 0.5594776  1.3577117
+# 14  NCOR1 0.62892413 1.2697008 0.4650625  3.4665022
+# 11  RUNX1 0.63224262 1.2669735 0.4639300  3.4600522
+# 16    FLG 0.63469500 0.7971327 0.3224296  1.9707266
+# 9  MAP2K4 0.65198488 1.2504545 0.4577803  3.4156914
+# 6   MUC16 0.73902729 1.1229014 0.5619000  2.2440071
+# 8  MAP3K1 0.77620274 0.8921538 0.4112192  1.9355572
+# 10   MUC4 0.87186947 0.9080878 0.2862372  2.8809091
+# 4   GATA3 0.96364580 1.0134399 0.5703065  1.8008920
+# 3     TTN 0.97239438 0.9896092 0.5480886  1.7868031
 
 library(coxphf)
 clinical$censored_time <- pmin(clinical$overall_survival, 3650)
@@ -2499,736 +2496,6 @@ summary_final %>%
   filter(Variable == "HE_claslow") %>% 
   select(Variable, starts_with("P_Model"), starts_with("P_Adj"))
 
-
-"""
-######################################################################
-#### xCell results analysis ====
-
-## If it necessary to analyze family of cells
-#Load Library
-library(xCell2)
-
-#Load xCell reference matrix: Immune Compendium for 40 cell types
-ImmuneCompendium.xCell2Ref <- readRDS(pathLocalDb("ImmuneCompendium.xCell2Ref.rds"))
-
-
-TCGA_xcell<- read.csv(pathLocalDb("TCGA_BRCA_xcell2_results_luminal.csv")) #OJO, ESTOS RESULTADOS ESTAN HECOS TENIENDO EN CUENTA TODAS LAS MUESTRAS Note that results of xCell depend on the number of samples. The power of estimation might be lower if your dataset has limited non-heterogeneous samples. (https://liulab-dfci.github.io/RIMA/Infiltration.html)
-# transformo la tabla para dejarme en columnas las poblaciones leucocitarias y en filas los pacientes
-TCGA_xcell <- as.data.frame(t(TCGA_xcell))
-
-# Set the column names to the values of the first row
-colnames(TCGA_xcell) <- as.character(TCGA_xcell[1, ])
-
-# Remove the first row since it's now the header
-TCGA_xcell <- TCGA_xcell[-1, ]
-
-# Remove the last row
-TCGA_xcell <- head(TCGA_xcell, -1)
-
-#Add a new column "patient" and asign rownames as value of patient
-TCGA_xcell$patient <- rownames(TCGA_xcell)
-
-#Replace . by _ in patient
-TCGA_xcell$patient <- gsub("\\.", "-", TCGA_xcell$patient)
-
-
-################################################################
-# Analisis estadistico descriptivo de las poblaciones celulares
-TCGA_xcell[] <- lapply(TCGA_xcell,as.numeric) #Función de dplyr
-
-summary(TCGA_xcell)
-#elimino la ultima columna porque dice patient y creo un nuevo data frame
-TCGA_xcell_a <- TCGA_xcell[,-41]
-
-# Set up plotting area (adjust columns and rows depending on number of variables)
-par(mfrow = c(5, 8), mar = c(2, 2, 2, 1))
-
-# Plot histogram for each column
-for (col in names(TCGA_xcell_a)) {
-  hist(TCGA_xcell_a[[col]], main = paste("Plot", col), xlab = col)
-}
-
-#plot box plot
-# Adjust margins and make the labels readable
-par(mfrow = c(1, 1), mar = c(12, 4, 4, 1))  # Increase the bottom margin to 12
-
-boxplot(TCGA_xcell_a, las = 2, cex.axis = 0.7, cex.names = 0.5)
-
-## Plot solo de algunas columnas (subtipos celulares)
-# Select specific columns by name
-selected_columns <- TCGA_xcell_a[, c("conventional dendritic cell", "Naive T-helpers", "Central memory T-helpers",
-                                     "Transitional memory T-helpers","CD27neg memory B-cells",
-                                     "class switched memory B cell","Cytotoxic NK cells","naive B cell",
-                                     "CD57neg Cytotoxic NK cells","unswitched memory B cell","Non plasma B-cells","B cell", "plasmacytoid dendritic cell, human",
-                                     "naive thymus-derived CD8-positive, alpha-beta T cell", "CD8+ Ttm", "regulatory T cell", "CD4-positive, alpha-beta T cell",
-                                     "CD8-positive, alpha-beta T cell","basophil", "CD8-positive, alpha-beta memory T cell")]  # Columnas que fueron p value significativo en cox univariado, excepto T cells porque me cambia el margen demasiado
-
-# Plot boxplot for selected columns
-par(mfrow = c(1, 1), mar = c(12, 4, 4, 1))  # Adjust margins
-boxplot(selected_columns, las = 2, cex.axis = 0.7, cex.names = 0.5)
-
-## Violin plot
-# Load required libraries
-library(ggplot2)
-library(reshape2)
-
-# Reshape data from wide to long format
-data_long <- melt(TCGA_xcell_a, id.vars = NULL)  # Convert columns into a long format
-
-# Define number of variables per plot
-num_vars_per_plot <- 10  # Adjust as needed
-num_plots <- ceiling(length(unique(data_long$variable)) / num_vars_per_plot)
-
-# Loop through subsets of variables and save separate violin plots
-for (i in 1:num_plots) {
-  # Subset data for current plot
-  start_idx <- (i - 1) * num_vars_per_plot + 1
-  end_idx <- min(i * num_vars_per_plot, length(unique(data_long$variable)))
-  subset_vars <- unique(data_long$variable)[start_idx:end_idx]
-  subset_data <- subset(data_long, variable %in% subset_vars)
-  
-  # Create violin plot
-  p <- ggplot(subset_data, aes(x = variable, y = value)) +
-    geom_violin(fill = "lightblue", alpha = 0.7) +
-    geom_boxplot(width = 0.2, outlier.shape = NA, alpha = 0.5) +
-    theme_minimal() +
-    theme(
-      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
-      panel.background = element_rect(fill = "white", color = "black"), # White background
-      plot.background = element_rect(fill = "white")) + # Ensures white background)
-    labs(title = paste("Violin Plot (Part", i, "of", num_plots, ")"),
-         x = "Cell Type",
-         y = "Value")
-  
-  # Save the plot as an image
-  ggsave(filename = paste0("violin_plot_part_", i, ".png"), plot = p, width = 8, height = 6)
-}
-
-print("Violin plots saved as separate images.")
-
-
-####################################################################
-
-# Define the new column names
-new_column_names <- c(
-  "CD4_Tcell", "CD8_Tcell", "granulocyte", "NKcell", "monocyte", "neutrophil", 
-  "T_cell", "non_plasma_Bcell", "Bcell", "pDC", "myeloid_cell", 
-  "unswitched_mBcell", "non_classical_monocyte", "plasma_cell", "eosinophil", 
-  "classical_monocyte", "naive_Bcell", "basophil", "reg_Tcell", 
-  "CD8_mTcell", "naive_thymus_CD8_Tcell", "fibroblast", 
-  "class_switched_mBcell", "Naive_Th", "cm_Th", 
-  "tm_Th", "Th_TEMRA", "em_Th", 
-  "macrophage", "CD57pos_NKcell", "CD57neg_NKcell", "CD27neg_mBcell", 
-  "reg_NKcell", "plasmablast", "cytotoxic_NKcell", 
-  "cm_CD8_Tcell", "CD8_Ttm", "em_CD8_Tcell", 
-  "em_CD8_Tcell_terminal_diff", "cDC"
-)
-
-colnames(TCGA_xcell)[1:40] <- new_column_names
-
-
-## Merge with clinical
-clinical <- merge(clinical, TCGA_xcell, by ="patient", all.x =TRUE, all.y =FALSE)
-
-## Ojo porque estas columnas son del scritp viejo
-
-clinical[, 124:163] <- lapply(clinical[, 124:163], as.numeric)
-
-summary(clinical[, 124:163]) # Check summaries of immune cell proportions
-
-
-##### Tumor purity ===
-library(readxl)
-tumor_purity<- read_excel(pathLocalDb("IHC_purity.xlsx"))
-clinical <- merge(clinical, tumor_purity, by ="sample", all.x =TRUE, all.y =FALSE)
-clinical$IHC <- as.numeric(clinical$IHC)
-summary(clinical$IHC)
-
-
-##### xCell normalization with tumor purity ====
-filtered_purity_clinical<- clinical[!is.na(clinical$IHC),]
-
-# automatizar la normalizacion de los tipos celulares para varias columnas -> dplyr
-# Ya tengo seleccionadas las columnas que quiero usar para el calculo (new_column_names)
-
-clinical <- clinical %>%
-  mutate(across(
-    .cols = all_of(new_column_names),
-    .fns = ~ ifelse(is.na(IHC) | IHC == 1, NA, .x / (1 - IHC)),
-    .names = "N_{.col}"
-  ))
-
-"""
-| Parte del código                                             | Explicación                                                                   |
-| -----------------------------------                          | ----------------------------------------------------------------------------- |
-| `mutate()`                                                   | Sirve para crear o modificar columnas                                         |
-| `across()`                                                   | Aplica una función a varias columnas a la vez dentro de `mutate()`            |
-| `.cols = all_of(cols_to_transform)`                          | Selecciona solo las columnas que definiste previamente                        |
-| `.fns = ~ ifelse(is.na(IHC) | IHC == 1, NA, .x / (1 - IHC))` | is.na(IHC) → detecta si IHC es NA, IHC == 1 → detecta si IHC es igual a 1, Si alguna de esas condiciones es verdadera, devuelve NA, sino Aplica una función anónima: .x es el valor actual de cada celda de la columna |
-| `.names = "N_{.col}"`                                        | Define el nombre de la nueva columna: por ejemplo, `N_CD4_Tcell`              |
-
-"""
-summary(clinical[, 164:204])
-## LAS NUEVAS COLUMNAS DE TIPOS DE CELULAS ESTARAN ENTRE 165 Y 204
-
-##### Univariable Cox for each cell types obtained from xCell ====
-
-# Definir columnas de interes (como ya tenia)
-immune_xcell_columns <- colnames(clinical[c(164:204)])
-
-# Censura a 10 a?os (3650 d?as)
-censored_time <- pmin(clinical$overall_survival, 3650)
-event_indicator <- clinical$vital_status_binary & (clinical$overall_survival <= 3650)
-
-# Crear objeto Surv
-surv_obj <- Surv(censored_time, event_indicator)
-
-# Inicializar lista para resultados
-univ_cell_results <- list()
-
-# Loop por cada tipo celular
-for (col in immune_xcell_columns) {
-  formula <- as.formula(paste("surv_obj ~", col))
-  
-  # Ajuste del modelo
-  univ_cox <- coxph(formula, data = clinical)
-  summary_univ_cox <- summary(univ_cox)
-  
-  # Extraer p-valor y HR
-  p_value <- summary_univ_cox[["logtest"]][["pvalue"]]
-  HR <- summary_univ_cox$coefficients[1, "exp(coef)"]
-  
-  # Test de proporcionalidad (Schoenfeld)
-  schoenfeld_test <- cox.zph(univ_cox)
-  schoenfeld_p <- schoenfeld_test$table[1, "p"]
-  
-  # Residuos Martingale para linealidad
-  martingale_resid <- residuals(univ_cox, type = "martingale")
-  
-  # Graficar residuos Martingale
-  martingale_plot <- ggplot(clinical, aes_string(x = col, y = martingale_resid)) +
-    geom_point(alpha = 0.6) +
-    geom_smooth(method = "loess", color = "red") +
-    labs(title = paste("Martingale Residuals:", col), y = "Martingale Residuals", x = col) +
-    theme_minimal()
-  
-  # Guardar resultados
-  univ_cell_results[[col]] <- list(p_value = p_value, HR = HR, schoenfeld_p = schoenfeld_p, martingale_plot = martingale_plot)
-}
-
-### Convertir resultados en DataFrame
-
-cox_results_df <- do.call(rbind, lapply(names(univ_cell_results), function(col) {
-  c(Cell_Type = col, 
-    P_Value = univ_cell_results[[col]]$p_value, 
-    HR = univ_cell_results[[col]]$HR,
-    Schoenfeld_P = univ_cell_results[[col]]$schoenfeld_p)
-}))
-
-cox_results_df <- data.frame(cox_results_df, stringsAsFactors = FALSE)
-cox_results_df$P_Value <- as.numeric(cox_results_df$P_Value)
-cox_results_df$HR <- as.numeric(cox_results_df$HR)
-cox_results_df$Schoenfeld_P <- as.numeric(cox_results_df$Schoenfeld_P)
-
-# Add a new column for significance
-cox_results_df$Significance <- ifelse(cox_results_df$P_Value < 0.05, "*", "")
-
-# Ordenar por P_Value
-cox_results_df <- cox_results_df[order(cox_results_df$P_Value), ]
-
-# Imprimir resultados
-print(cox_results_df)
-
-### Guardar grficos de residuos Martingale opcionalmente
-
-dir.create("Martingale_Plots", showWarnings = FALSE)
-for (col in names(univ_cell_results)) {
-  plot <- univ_cell_results[[col]]$martingale_plot
-  #ggsave(filename = paste0("Martingale_Plots/Martingale_", col, ".png"), plot = plot, width = 6, height = 4)
-}
-
-
-
-immune_xcell_columns <- colnames(clinical[c(124:163)])
-
-### Análisis de Cox Univariado para cada tipo celular de xCell
-#Obtain pvalue and coefficient for each cell 
-censored_time <- pmin(clinical$overall_survival, 3650)
-event_indicator <- clinical$vital_status_binary & (clinical$overall_survival <= 3650)
-
-#creamos un objeto "surv" con la funci?n Surv()
-surv_obj <- Surv(censored_time,
-                 event_indicator)
-
-univ_cell_results <- list()
-for (col in immune_xcell_columns) {
-  formula <- as.formula(paste("surv_obj ~", col))
-  univ_cox <- coxph(formula, data = clinical)
-  summary_univ_cox <- summary(univ_cox)
-  p_value <- summary_univ_cox[["logtest"]][["pvalue"]]
-  HR <- summary_univ_cox$coefficients[1, "exp(coef)"]
-  univ_cell_results[[col]] <- list(p_value = p_value, HR = HR)
-}
-
-# Convert the list to a data frame
-cox_results_df <- do.call(rbind, lapply(names(univ_cell_results), function(col) {
-  c(Cell_Type = col, 
-    P_Value = univ_cell_results[[col]]$p_value, 
-    HR = univ_cell_results[[col]]$HR)
-}))
-
-# Convert columns to appropriate types
-cox_results_df <- data.frame(cox_results_df, stringsAsFactors = FALSE)
-cox_results_df$P_Value <- as.numeric(cox_results_df$P_Value)
-cox_results_df$HR <- as.numeric(cox_results_df$HR)
-
-# Sort the data frame by P_Value
-cox_results_df <- cox_results_df[order(cox_results_df$P_Value), ]
-
-# Print the sorted results
-print(cox_results_df)
-
-
-write.csv(cox_results_df, file=pathLocalResults("Univariable Cox for N_xcell proportions.csv"), row.names = FALSE)
-
-
-## Verificaci?n de supuestos para analisis de Cox
-
-
-#### Cell proportions comparison between high and low HE groups ====
-
-##### From xCell ====
-## Statistical analysis comparing high vs low HE clas groups by Wilcoxon
-immune_xcell_columns <- colnames(clinical[c(164:204)])
-
-# Call funcion
-all_results <- list()
-for (col in immune_xcell_columns) {
-  # Perform Wilcoxon test for each column
-  wilcox_result <- wilcoxon_test_function(clinical, col, "HE_clas", "low")
-  all_results[[col]] <- wilcox_result
-  
-  # Print results
-  cat("Wilcoxon test results for", col, ":\n")
-  print(paste0("p-value: ", all_results[[col]][["p.value"]]))
-}
-
-
-##Create an exportable table with wilcoxon results
-# Extract cell types and p-values from the results
-cell_types <- names(all_results)
-p_values <- sapply(all_results, function(x) x[["p.value"]])
-test_statistics <- sapply(all_results, function(x) x[["statistic"]])
-
-# Create a data frame
-results_table <- data.frame(
-  Cell_Type = cell_types,
-  P_Value = p_values,
-  Test_Statistic = test_statistics
-)
-
-# Add a new column for significance
-results_table$Significance <- ifelse(results_table$P_Value < 0.05, "*", "")
-
-# Print the updated table
-print(results_table)
-
-# Export the table as a CSV file
-write.csv(results_table, file = pathLocalResults("wilcoxon_N_xcell_between_HEclas.csv"))
-
-
-## Unir tablas -> Cox sigificance y Wilcoxon
-
-Cox_Wilcoxon_xCell <- merge(cox_results_df, results_table, by = "Cell_Type")
-
-
-write.csv(Cox_Wilcoxon_xCell, file="Cox_Wilcoxon_xCell.csv", fileEncoding = "UTF-8")
-write.table(Cox_Wilcoxon_xCell, file="Cox_Wilcoxon_xCell_table.csv", fileEncoding = "UTF-8")
-
-
-
-##Plot immune cells between high and low HE groups
-
-#Alta frecuencia
-annotations <- list(
-  list(x = 1.5, y = 0.175, stars = 1, variable = colnames(clinical)[c(165,166,169,171,174,175,177,180,183,184,189,190,192,193,204)])
-)
-
-create_grouped_barplot_median_sem(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                                  group = "HE_clas",
-                                  column_names = colnames(clinical)[c(165,166,169,171,174,175,177,180,183,184,189,190,192,193,204)],
-                                  y_limit= 0.2,
-                                  annotations = annotations)
-
-create_grouped_boxplot(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                       group = "HE_clas",
-                       column_names = colnames(clinical)[c(165,166,169,171,174,175,180,183,184,189,190,192,193,204)],
-                       y_limit= 0.1,
-                       annotations = annotations) 
-
-#Baja frecuencia
-
-create_grouped_barplot_median_sem(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                                  group = "HE_clas",
-                                  column_names = colnames(clinical)[c(167,170,172,173,176,179,181,185:187,191,194:203)],
-                                  y_limit= 0.05,
-                                  annotations = NULL)
-
-create_grouped_boxplot(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                       group = "HE_clas",
-                       column_names = colnames(clinical)[c(165,166,169,171,174,175,180,183,184,189,190,192,193,204)],
-                       y_limit= 0.1,
-                       annotations = annotations) 
-
-create_grouped_boxplot(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                       group = "HE_clas",
-                       column_names = colnames(clinical)[c(175:184)],
-                       y_limit= 0.06,
-                       annotations = annotations) 
-create_grouped_boxplot(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                       group = "HE_clas",
-                       column_names = colnames(clinical)[c(185:194)],
-                       y_limit= 0.06,
-                       annotations = annotations) 
-create_grouped_boxplot(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                       group = "HE_clas",
-                       column_names = colnames(clinical)[c(195:204)],
-                       y_limit= 0.06,
-                       annotations = annotations) 
-
-# Plot  T cells non memory -> CAMBIAR TODOS LOS NOMBRES DE COLUMNAS
-annotations <- list(
-  list(x = 1.5, y = 0.04, stars = 1, variable = colnames(clinical)[c(124,125,130,142,143,144,147,148,149,151, 159:161)])
-)
-create_grouped_boxplot(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                       group = "HE_clas",
-                       column_names = colnames(clinical)[c(124,125,130,142,143,144,147,148,149,151, 159:161)],
-                       y_limit= 0.07,
-                       annotations = annotations) 
-
-#General cells: T cells (130), TCD4 (124), TCD8 (125), B cell (132), pDC (133) Myeloids (134),  Monocytes (128)
-annotations <- list(
-  list(x = 1.5, y = 0.06, stars = 1, variable = colnames(clinical)[c(130,124,125,132,133,134,128)])
-)
-
-create_grouped_boxplot(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                       group = "HE_clas",
-                       column_names = colnames(clinical)[c(130,124,125,132,133,134,128)],
-                       y_limit= 0.08,
-                       annotations = annotations,
-                       y_text = "Immune cell proportions") 
-
-
-#Granulocytes: Granulocytes (126), Eosinofilos (138), Basofilos(141), Neutrofilos (129)
-annotations <- list(
-  list(x = 1.5, y = 0.0025, stars = 1, variable = colnames(clinical)[c(126,138)])
-)
-
-create_grouped_boxplot(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                       group = "HE_clas",
-                       column_names = colnames(clinical)[c(126, 138, 141,129)],
-                       y_limit= 0.003,
-                       annotations = annotations,
-                       y_text= "Granulocyte Cell Proportions") 
-
-#NK: NK (127),  Reg NK (156), cytotoxic NK (158) CD57+ (153), CD57- (154)
-annotations <- list(
-  list(x = 1.5, y = 0.0025, stars = 1, variable = colnames(clinical)[c(156,158,153,154)])
-)
-
-create_grouped_boxplot(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                       group = "HE_clas",
-                       column_names = colnames(clinical)[c(127, 156, 158,153,154)],
-                       y_limit= 0.003,
-                       annotations = annotations,
-                       y_text= "NK Cell Proportions") 
-#Monocytes:monocytes (128), non classifcal monocytes(136), clasical monocytes (139), macrophages (152), cDC (163)
-annotations <- list(
-  list(x = 1.5, y = 0.06, stars = 1, variable = colnames(clinical)[c(128,136,139, 152, 163)])
-)
-
-create_grouped_boxplot(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                       group = "HE_clas",
-                       column_names = colnames(clinical)[c(128,136,139, 152, 163)],
-                       y_limit= 0.07,
-                       annotations = annotations,
-                       y_text = "Monocyte Cell Proportions") 
-
-#Bcells: Bcells (132), Plasmablas (157), plasma cells (no hay celulas, por lo que no se agrega), non plasma B cells (131),  naive B cells, Unswitched memory B cells, Class Switched Memory B cell, CD27- memory B cells
-annotations <- list(
-  list(x = 1.5, y = 0.004, stars = 1, variable = colnames(clinical)[c(132,157,131,140,135,146,155)])
-)
-
-create_grouped_boxplot(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                       group = "HE_clas",
-                       column_names = colnames(clinical)[c(132,157,131,140,135,146,155)],
-                       y_limit= 0.005,
-                       annotations = annotations,
-                       y_text = "B Cell Proportions")
-
-#T CD4 cells: tcd4 (124), Treg (142), Naive Th (147), Transitional Memory Th (149), Th TEMRA (no lo vamos a incuir), cENTRAL MEMORY tH (148), Effector Memory Th (151)
-
-annotations <- list(
-  list(x = 1.5, y = 0.025, stars = 1, variable = colnames(clinical)[c(124,142,147,149,148,151)])
-)
-create_grouped_boxplot(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                       group = "HE_clas",
-                       column_names = colnames(clinical)[c(124,142,147,149,148,151)],
-                       y_limit= 0.03,
-                       annotations = annotations,
-                       y_text = "T CD4+ Cell Proportions")
-
-#TCD8: TCD8 (125), naive Thymus derived CD8 (144), CD8 memory T cell (143), CD8 Ttm (160), cm TCD8 (159), Effmemory TCD8 (161), Eff Memory TCD8 terminally differenciated (Casi que no hay, no se va a incluir)
-annotations <- list(
-  list(x = 1.5, y = 0.025, stars = 1, variable = colnames(clinical)[c(125,144, 143, 160,159,161)])
-)
-
-create_grouped_boxplot(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                       group = "HE_clas",
-                       column_names = colnames(clinical)[c(125,144, 143, 160,159,161)],
-                       y_limit= 0.025,
-                       annotations = annotations,
-                       y_text = "T CD8+ Cell Proportions")
-
-library(pheatmap)
-
-# Extract the T cell proportion columns
-clinical <- clinical[!is.na(clinical$IHC), ]
-cell_T <- clinical[, c(165,166,169,171,174,175,177,180,183,184,189,190,192,193,204)]
-cell_T <- clinical[,c(165,166,194,183,200,181,187,196,176,172,173,171,184,202,203)]
-
-rownames(cell_T) <- clinical$patient
-
-# Extract the annotation column
-annotation_col <- data.frame(HE_clas = clinical$HE_clas)
-rownames(annotation_col) <- clinical$patient
-
-# Order the data frame based on HE_clas
-ordered_indices <- order(clinical$HE_clas)
-cell_T <- cell_T[ordered_indices, ]
-#Elimino filas (muestras) con varianza 0
-cell_T <- cell_T[apply(cell_T, 2, function(x) var(x, na.rm = TRUE) > 0), ]
-
-annotation_col <- annotation_col[ordered_indices, , drop = FALSE]
-
-summary(cell_T) #maximum value is 0.5
-
-# Define a custom color palette (e.g., from blue to white to red)
-color_palette <- colorRampPalette(c("blue", "white", "red"))(100)
-color_palette <- colorRampPalette(c("darkred", "darkgreen"))(100)
-library(RColorBrewer)
-color_palette <- brewer.pal(9,"BuGn")
-
-
-#Breaks for non scale
-breaks <- seq(0.001, 0.03, length.out = 100)
-
-# Create the heatmap
-pheatmap(
-  mat = t(scale(cell_T)),  # Transpose the matrix for correct orientation
-  annotation_col = annotation_col,  # Add annotation for HE_clas
-  show_colnames = FALSE,  # Hide column names (patient IDs) for clarity
-  cluster_cols = FALSE,   # Do not cluster columns since they are already ordered
-  cluster_rows = TRUE,
-  color = color_palette,  # Use the custom color palette
-  breaks = breaks,        # Use the custom breaks
-  #scale = "row",         #si hago escala en mat, no lo hago aca
-  main = "Cell Proportions Heatmap",
-  fontsize = 10          # Adjust font size
-)
-
-# Extract the B cell proportion columns
-cell_B <- clinical[, c(131,140,135,146,155,157)]
-rownames(cell_B) <- clinical$patient
-
-# Extract the annotation column
-annotation_col <- data.frame(HE_clas = clinical$HE_clas)
-rownames(annotation_col) <- clinical$patient
-
-# Order the data frame based on HE_clas
-ordered_indices <- order(clinical$HE_clas)
-cell_B <- cell_B[ordered_indices, ]
-#Elimino filas (muestras) con varianza 0
-cell_B <- cell_B[apply(cell_B, 2, function(x) var(x, na.rm = TRUE) > 0), ]
-
-annotation_col <- annotation_col[ordered_indices, , drop = FALSE]
-
-summary(cell_B) #maximum value is 0.5
-
-# Define a custom color palette (e.g., from blue to white to red)
-color_palette <- colorRampPalette(c("blue", "white", "red"))(100)
-
-#Breaks for non scale
-breaks <- seq(0.0005, 0.03, length.out = 100)
-
-# Create the heatmap
-pheatmap(
-  mat = t(cell_B),  # Transpose the matrix for correct orientation
-  annotation_col = annotation_col,  # Add annotation for HE_clas
-  show_colnames = FALSE,  # Hide column names (patient IDs) for clarity
-  cluster_cols = FALSE,   # Do not cluster columns since they are already ordered
-  cluster_rows = FALSE,
-  color = color_palette,  # Use the custom color palette
-  breaks = breaks,        # Use the custom breaks
-  scale = "row",
-  main = "Cell Proportions Heatmap",
-  fontsize = 10          # Adjust font size
-)
-
-
-
-##### From QuantiSeq ====
-## Statistical analysis comparing high vs low HE clas groups by Wilcoxon
-immune_quantiseq_columns <- colnames(clinical[c(96:106)])
-
-# Call funcion
-quantiseq_results <- list()
-for (col in immune_quantiseq_columns) {
-  # Perform Wilcoxon test for each column
-  wilcox_result <- wilcoxon_test_function(clinical, col, "HE_clas", "low")
-  quantiseq_results[[col]] <- wilcox_result
-  
-  # Print results
-  cat("Wilcoxon test results for", col, ":\n")
-  print(paste0("p-value: ", quantiseq_results[[col]][["p.value"]]))
-}
-
-
-##Create an exportable table with wilcoxon results
-# Extract cell types and p-values from the results
-cell_types <- names(quantiseq_results)
-p_values <- sapply(quantiseq_results, function(x) x[["p.value"]])
-test_statistics <- sapply(quantiseq_results, function(x) x[["statistic"]])
-
-# Create a data frame
-quantiseq_results_table <- data.frame(
-  Cell_Type = cell_types,
-  P_Value = p_values,
-  Test_Statistic = test_statistics
-)
-
-# Add a new column for significance
-quantiseq_results_table$Significance <- ifelse(quantiseq_results_table$P_Value < 0.05, "*", "")
-
-# Print the updated table
-print(quantiseq_results_table)
-
-
-## Plot M1 and M2 macrophages (97 y 98)
-create_grouped_boxplot(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                       group = "HE_clas",
-                       column_names = colnames(clinical)[c(97,98)],
-                       y_limit= 0.15,
-                       #annotations = annotations,
-                       y_text = "Myeloid Absolute Proportion Cells") 
-
-## Plot Treg (104), TCD4 (102), TCD8 (103), B cells (96)
-annotations <- list(
-  list(x = 1.5, y = 0.1, stars = 1, variable = colnames(clinical)[c(96,103,104)])
-)
-
-create_grouped_boxplot(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                       group = "HE_clas",
-                       column_names = colnames(clinical)[c(96,102,103,104)],
-                       y_limit= 0.2,
-                       annotations = annotations,
-                       y_text = "Myeloid Absolute Proportion Cells")
-
-mean(clinical$B_cell)
-
-# Plot  Myeloid cells: 97,98,100*,105
-annotations <- list(
-  list(x = 1.5, y = 0.1, stars = 1, variable = colnames(clinical)[c(100)])
-)
-
-create_grouped_boxplot(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                       group = "HE_clas",
-                       column_names = colnames(clinical)[c(97,98,100,105)],
-                       y_limit= 0.15,
-                       annotations = annotations,
-                       y_text = "Myeloid Absolute Proportion Cells") 
-# Plot  Lymphoid cells: 96,101,102,103,104
-annotations <- list(
-  list(x = 1.5, y = 0.1, stars = 1, variable = colnames(clinical)[c(96,101,103,104)])
-)
-create_grouped_boxplot(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                       group = "HE_clas",
-                       column_names = colnames(clinical)[c(96,101:104)],
-                       y_limit= 0.15,
-                       annotations = annotations,
-                       y_text = "Lymphoid Absolute Proportion Cells")
-
-
-### Immune cell composition with CIBERSORT results ====
-cibersort_results <- read.delim(pathLocalDb("cibersort_results.txt", row.names=1))
-
-#Add a new column "patient" and asign rownames as value of patient
-cibersort_results$patient <- rownames(cibersort_results)
-colnames(cibersort_results)
-cibersort_results <- subset(cibersort_results, select = -c(P.value,Correlation,RMSE))
-
-clinical <- merge(clinical, cibersort_results, by ="patient", all.x =TRUE, all.y =FALSE)
-summary_cells <- as.data.frame(summary(clinical[,123:145]))
-
-cells <- colnames(clinical[,124:145])
-for (i in cells) {
-  hist(clinical[,i], main = i)
-}
-
-selected_cells <- c("B.cells.naive","B.cells.memory","Plasma.cells","T.cells.CD8","T.cells.CD4.naive",
-                    "T.cells.CD4.memory.activated","T.cells.regulatory..Tregs.","Macrophages.M1",
-                    "Macrophages.M2","Dendritic.cells.activated","Mast.cells.activated")
-
-cell_wilcox_result <- list()
-
-for (i in selected_cells) {
-  result <- wilcoxon_test_function(clinical, i, "HE_clas", "high")
-  cell_wilcox_result[[i]] <- result
-  print(cell_wilcox_result) 
-}
-
-cell_types <- names(cell_wilcox_result)
-p_values <- sapply(cell_wilcox_result, function(x) x[["p.value"]])
-test_statistics <- sapply(cell_wilcox_result, function(x) x[["statistic"]])
-
-CIBERSORT_results_table <- data.frame(
-  cell_type = cell_types,
-  p_value = p_values,
-  test_statistic = test_statistics
-)
-
-CIBERSORT_results_table$Significance <- ifelse(CIBERSORT_results_table$p_value < 0.05, "*", "")
-
-# Ordenar por P_Value
-CIBERSORT_results_table <- CIBERSORT_results_table[order(CIBERSORT_results_table$p_value), ]
-
-
-
-annotations <- list(
-  list(x = 1.5, y = 0.1, stars = 1, variable = colnames(clinical)[c(96,101,103,104)])
-)
-create_grouped_barplot_median_sem(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                                  group = "HE_clas",
-                                  column_names = selected_cells,
-                                  y_limit= 0.05,
-                                  annotations = NULL,
-                                  y_text = "Cells proportions")
-
-low_cells <- c("Macrophages.M2", "B.cells.memory")
-create_grouped_boxplot(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                       group = "HE_clas",
-                       column_names = low_cells,
-                       #y_limit= 0.00003,
-                       annotations = NULL,
-                       y_text = "Cells proportions")
-
-create_grouped_barplot_median_sem(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                                  group = "HE_clas",
-                                  column_names = low_cells,
-                                  #y_limit= 0.05,
-                                  annotations = NULL,
-                                  y_text = "Cells proportions")
-"""
 
 ########################################################################
 ### IMMUNE CELLS from HE comparison between HE immune clas ====
@@ -3653,13 +2920,13 @@ cox_results_df <- cox_results_df[order(cox_results_df$P_Value), ]
 # Print the sorted results
 print(cox_results_df)
 
-"""
-print(cox_results_df)
-       Cell_Type     P_Value        HR CI.lower..95 CI.upper..95
-1 Lymphocytes_HE 0.002184113 0.1011994   0.02299305     0.445409
-3 Macrophages_HE 0.002503469 9.2955326   2.22265429    38.875558
-2  Mast_Cells_HE 0.467840451 2.9934862   0.16576432    54.058433
-"""
+
+# print(cox_results_df)
+#        Cell_Type     P_Value        HR CI.lower..95 CI.upper..95
+# 1 Lymphocytes_HE 0.002184113 0.1011994   0.02299305     0.445409
+# 3 Macrophages_HE 0.002503469 9.2955326   2.22265429    38.875558
+# 2  Mast_Cells_HE 0.467840451 2.9934862   0.16576432    54.058433
+
 
 ##### Cox multivariado para immune clas, cell proportions, mutations, prognostic factors
 # Modelo stage_node: HE, stage (90), age, TP53
@@ -3751,30 +3018,30 @@ res_DEG_gsea <- res_DEG_gsea[order(res_DEG_gsea$padj),]
 res_DEG_gsea$symbol <- rownames(res_DEG_gsea)
 
 res_DEG_gsea<- as.data.frame(res_DEG_gsea@listData)
-"""
-library(org.Hs.eg.db)
-ens2symbol <- AnnotationDbi::select(org.Hs.eg.db,
-                                    key=rownames(res_DEG_gsea), 
-                                    columns="SYMBOL",
-                                    keytype="ENSEMBL")
-library(tidyverse)
-ens2symbol <- as_tibble(ens2symbol)
-ens2symbol
 
-res_DEG_gsea <- as_tibble(res_DEG_gsea, rownames=NA)
-res_DEG_gsea$ENSEMBL <- rownames(res_DEG_gsea)
-res_DEG_gsea <- inner_join(res_DEG_gsea, ens2symbol, by="ENSEMBL")
+# library(org.Hs.eg.db)
+# ens2symbol <- AnnotationDbi::select(org.Hs.eg.db,
+#                                     key=rownames(res_DEG_gsea), 
+#                                     columns="SYMBOL",
+#                                     keytype="ENSEMBL")
+# library(tidyverse)
+# ens2symbol <- as_tibble(ens2symbol)
+# ens2symbol
+# 
+# res_DEG_gsea <- as_tibble(res_DEG_gsea, rownames=NA)
+# res_DEG_gsea$ENSEMBL <- rownames(res_DEG_gsea)
+# res_DEG_gsea <- inner_join(res_DEG_gsea, ens2symbol, by="ENSEMBL")
+# 
+# res_DEG_gsea <- res_DEG_gsea %>% 
+#   dplyr::select(SYMBOL, stat) %>% 
+#   na.omit() %>% 
+#   distinct() %>% 
+#   group_by(SYMBOL) %>% 
+#   summarize(stat=mean(stat))
+# res_DEG_gsea
+# 
+# res_DEG_gsea <- res_DEG_gsea[order(res_DEG_gsea$stat), ]
 
-res_DEG_gsea <- res_DEG_gsea %>% 
-  dplyr::select(SYMBOL, stat) %>% 
-  na.omit() %>% 
-  distinct() %>% 
-  group_by(SYMBOL) %>% 
-  summarize(stat=mean(stat))
-res_DEG_gsea
-
-res_DEG_gsea <- res_DEG_gsea[order(res_DEG_gsea$stat), ]
-"""
 write.table(as.data.frame(res_DEG_gsea), 
             file=pathLocalResults("HE clas Results/DESeq_gsea_high_vs_low_HE_clas_without_prior_treatment.txt"))
 
@@ -3857,54 +3124,53 @@ p + geom_point(
 )
 
 
-"""
-Plot usign ggplot
-genes_to_label <- c("ADORA2A", "LAG3", "HAVCR2", "PDCD1", "CD274", "PDCD1LG2", "CTLA4", "IDO1", "CD276", "VTCN1", "CD244", 
-                    "BTLA", "TIGIT", "CD80", "CD86", "VSIR", "CD28", "ICOS", "ICOSLG", "TNFRSF14", "CD160", "TNFSF14", 
-                    "TNFRSF9", "TNFSF9", "TNFRSF4", "CD70", "CD27", "CD40", "CD40LG", "LGALS9", "TNFSF18", "CEACAM1", 
-                    "CD47", "SIRPA", "DNAM1", "PVR", "CD244", "CD48", "TMIGD2", "HHLA2", "BTN2A1", "CD209", "BTN2A2", 
-                    "BTN3A1", "BTNL3", "BTNL9", "CD96", "TDO2", "CD200", "CD200R1", "GZMB","HMCN1", "TP53", "MAP3K1")
-genes_to_label <- immune_genes$symbol
-#genes_to_label <- c("CTLA4", "PDCD1", "CD274", "CD80", "CD86", "TIGIT", "KIR3DL2", "PRF1", "GZMB", "CD40")
+# #Plot usign ggplot
+# genes_to_label <- c("ADORA2A", "LAG3", "HAVCR2", "PDCD1", "CD274", "PDCD1LG2", "CTLA4", "IDO1", "CD276", "VTCN1", "CD244", 
+#                     "BTLA", "TIGIT", "CD80", "CD86", "VSIR", "CD28", "ICOS", "ICOSLG", "TNFRSF14", "CD160", "TNFSF14", 
+#                     "TNFRSF9", "TNFSF9", "TNFRSF4", "CD70", "CD27", "CD40", "CD40LG", "LGALS9", "TNFSF18", "CEACAM1", 
+#                     "CD47", "SIRPA", "DNAM1", "PVR", "CD244", "CD48", "TMIGD2", "HHLA2", "BTN2A1", "CD209", "BTN2A2", 
+#                     "BTN3A1", "BTNL3", "BTNL9", "CD96", "TDO2", "CD200", "CD200R1", "GZMB","HMCN1", "TP53", "MAP3K1")
+# genes_to_label <- immune_genes$symbol
+# #genes_to_label <- c("CTLA4", "PDCD1", "CD274", "CD80", "CD86", "TIGIT", "KIR3DL2", "PRF1", "GZMB", "CD40")
+# 
+# library(ggplot2)
+# volc = ggplot(input, aes(x=log2FoldChange, y=-log10(pvalueadj))) + #volcanoplot with log2Foldchange versus pvalue
+#   geom_point(aes(col=sig)) + #add points colored by significance
+#   
+#   geom_point(data= input[!is.na(input$immune),], aes(x=log2FoldChange[!is.na(immune)], y=-log10(pvalueadj)[!is.na(immune)], col=immune), size = 3, shape=18) +
+#   
+#   
+#   scale_colour_manual(name="",  
+#                       values = c("DEG"="grey30", "Not Sig"="grey60", "Immune genes"=  #6699CC)) + 
+# xlim(-5, 5) + 
+#   ylim(0, 60) +
+#   geom_hline(yintercept = -log(qvaluecutoff), linetype="dashed", 
+#              color = "grey20", linewidth=0.5) + 
+#   geom_vline(xintercept = -log2cutoff, linetype = "dashed", color = "grey20") +  # Add vertical line at log2FoldChange = -1
+#   geom_vline(xintercept = log2cutoff, linetype = "dashed", color = "grey20") +   # Add vertical line at log2FoldChange = 1
+#   labs(title = "DEG Analysis Volcano high vs low HE immune groups in luminal patients", x = "log2 FC", y = "-log10(pvalueadj)") 
+# 
+# # Use geom_label_repel to add labels in boxes with a white background
+# + geom_label_repel(data=input %>% 
+#                      filter((abs(log2FoldChange) > log2cutoff) & (pvalueadj < qvaluecutoff) 
+#                             &(symbol %in% genes_to_label)
+#                      ), 
+#                    aes(log2FoldChange, -log10(pvalueadj) 
+#                        ,label= ifelse(symbol %in% genes_to_label, symbol, "")
+#                    ), 
+#                    box.padding = 0.4,     # Adjust the padding inside the label
+#                    label.padding = 0.2,   # Adjust padding around the label
+#                    fill = "white",        # Set background color for the label
+#                    color = "black",       # Label text color
+#                    max.overlaps = 3000, 
+#                    min.segment.length = 0.05, 
+#                    size = 3, 
+#                    segment.color = "grey50", 
+#                    segment.size = 0.3)
+# 
+# 
+# volc
 
-library(ggplot2)
-volc = ggplot(input, aes(x=log2FoldChange, y=-log10(pvalueadj))) + #volcanoplot with log2Foldchange versus pvalue
-  geom_point(aes(col=sig)) + #add points colored by significance
-  
-  geom_point(data= input[!is.na(input$immune),], aes(x=log2FoldChange[!is.na(immune)], y=-log10(pvalueadj)[!is.na(immune)], col=immune), size = 3, shape=18) +
-  
-  
-  scale_colour_manual(name="",  
-                      values = c("DEG"="grey30", "Not Sig"="grey60", "Immune genes"=  #6699CC)) + 
-xlim(-5, 5) + 
-  ylim(0, 60) +
-  geom_hline(yintercept = -log(qvaluecutoff), linetype="dashed", 
-             color = "grey20", linewidth=0.5) + 
-  geom_vline(xintercept = -log2cutoff, linetype = "dashed", color = "grey20") +  # Add vertical line at log2FoldChange = -1
-  geom_vline(xintercept = log2cutoff, linetype = "dashed", color = "grey20") +   # Add vertical line at log2FoldChange = 1
-  labs(title = "DEG Analysis Volcano high vs low HE immune groups in luminal patients", x = "log2 FC", y = "-log10(pvalueadj)") 
-
-# Use geom_label_repel to add labels in boxes with a white background
-+ geom_label_repel(data=input %>% 
-                     filter((abs(log2FoldChange) > log2cutoff) & (pvalueadj < qvaluecutoff) 
-                            &(symbol %in% genes_to_label)
-                     ), 
-                   aes(log2FoldChange, -log10(pvalueadj) 
-                       ,label= ifelse(symbol %in% genes_to_label, symbol, "")
-                   ), 
-                   box.padding = 0.4,     # Adjust the padding inside the label
-                   label.padding = 0.2,   # Adjust padding around the label
-                   fill = "white",        # Set background color for the label
-                   color = "black",       # Label text color
-                   max.overlaps = 3000, 
-                   min.segment.length = 0.05, 
-                   size = 3, 
-                   segment.color = "grey50", 
-                   segment.size = 0.3)
-
-
-volc
-"""
 
 # Extract genes from res_Immune with padj < 0.05 and Log2FoldChange > |1|
 sign_genes <- res1_ordered$symbol[
@@ -4448,10 +3714,10 @@ chemokine_heatmap <- pheatmap(
   silent = TRUE
 )
 
-"""
-To combine multiple pheatmap() plots into a single figure, the most flexible and publication-quality approach is to use the {gridExtra} or {patchwork} package — 
-but since pheatmap() returns a grid object, the easiest method is to convert each pheatmap to a grob and then arrange them.
-"""
+
+# To combine multiple pheatmap() plots into a single figure, the most flexible and publication-quality approach is to use the {gridExtra} or {patchwork} package — 
+# but since pheatmap() returns a grid object, the easiest method is to convert each pheatmap to a grob and then arrange them.
+
 
 library(pheatmap)
 library(gridExtra)
@@ -4616,17 +3882,17 @@ immune_GO_BP_genes <- GO_BP_genes[grepl(pattern, names(GO_BP_genes), ignore.case
 # Exclude those with "REGULATION_OF_"
 immune_GO_BP_genes <- immune_GO_BP_genes[!grepl("REGULATION_OF_", names(immune_GO_BP_genes), ignore.case = TRUE)]
 
-"""
-# Obtener los ultimos valores de los nombres:
-# Get the names of the gene sets
-gene_set_names <- names(immune_GO_BP_genes)
-# Extract the last word after the last "_"
-last_words <- sub(".*_", "", gene_set_names)
-# Get unique values
-unique_last_words <- unique(last_words)
-# View them
-print(unique_last_words)
-"""
+
+# # Obtener los ultimos valores de los nombres:
+# # Get the names of the gene sets
+# gene_set_names <- names(immune_GO_BP_genes)
+# # Extract the last word after the last "_"
+# last_words <- sub(".*_", "", gene_set_names)
+# # Get unique values
+# unique_last_words <- unique(last_words)
+# # View them
+# print(unique_last_words)
+
 
 # Select interested suffixes
 target_suffixes <- c(
@@ -4658,14 +3924,14 @@ plot(rankings)
 #Check min and max ranking
 max(rankings)
 min(rankings)
-"""
+
 # Some genes have such low p values that the signed pval is +- inf, we need to change it to the maximum * constant to avoid problems with fgsea
 max_ranking <- max(rankings[is.finite(rankings)])
 min_ranking <- min(rankings[is.finite(rankings)])
 rankings <- replace(rankings, rankings > max_ranking, max_ranking * 10)
 rankings <- replace(rankings, rankings < min_ranking, min_ranking * 10)
 rankings <- sort(rankings, decreasing = TRUE) # sort genes by ranking
-"""
+
 ## 4. Run GSEA ---------------------------------------------------------------
 # Function to perform GSEA and filter significant independent pathways
 perform_gsea <- function(rankings, pathways, minSize = 10, maxSize = 500, nproc = 1) {
