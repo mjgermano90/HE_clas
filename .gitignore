@@ -1,7 +1,9 @@
 .Rproj.user
 .Rhistory
 .RData
-02_data/
-03_results/
+Datos/
+Resultados/
 renv/library/
 renv/staging/
+~$*.docx
+~$*.doc
