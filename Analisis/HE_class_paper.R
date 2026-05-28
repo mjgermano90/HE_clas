@@ -40,16 +40,17 @@ library(forestmodel)
 library(car)
 library(DescTools)
 library(forestplot)
+library(ashr)
 
 
 pathLocalDb <- function(x) {
-  completePath <- file.path(getwd(), "02_data", x)
+  completePath <- file.path(getwd(), "Datos", x)
   return(completePath)
 }
 
 
 pathLocalResults <- function(x) {
-  completePath <- file.path(getwd(), "03_results", x)
+  completePath <- file.path(getwd(), "Resultados", x)
   return(completePath)
 }
 

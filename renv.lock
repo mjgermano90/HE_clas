@@ -1490,6 +1490,28 @@
       "Maintainer": "Hervé Pagès <hpages.on.github@gmail.com>",
       "ExperimentalWindowsRuntime": "ucrt"
     },
+    "SQUAREM": {
+      "Package": "SQUAREM",
+      "Version": "2021.1",
+      "Source": "Repository",
+      "Date": "2021-01-12",
+      "Title": "Squared Extrapolation Methods for Accelerating EM-Like Monotone Algorithms",
+      "Description": "Algorithms for accelerating the convergence of slow, monotone sequences from smooth, contraction mapping such as the EM algorithm. It can be used to accelerate any smooth, linearly convergent acceleration scheme.  A tutorial style introduction to this package is available in a vignette on the CRAN download page or, when the package is loaded in an R session, with vignette(\"SQUAREM\"). Refer to the J Stat Software article: <doi:10.18637/jss.v092.i07>.",
+      "Depends": [
+        "R (>= 3.0)"
+      ],
+      "Suggests": [
+        "setRNG"
+      ],
+      "LazyLoad": "yes",
+      "License": "GPL (>= 2)",
+      "Author": "Ravi Varadhan",
+      "Maintainer": "Ravi Varadhan <ravi.varadhan@jhu.edu>",
+      "URL": "https://coah.jhu.edu/people/Faculty_personal_Pages/Varadhan.html",
+      "Repository": "CRAN",
+      "NeedsCompilation": "no",
+      "Encoding": "UTF-8"
+    },
     "SparseM": {
       "Package": "SparseM",
       "Version": "1.81",
@@ -1878,6 +1900,51 @@
       "git_last_commit_date": "2022-11-01",
       "NeedsCompilation": "no"
     },
+    "ashr": {
+      "Package": "ashr",
+      "Version": "2.2-54",
+      "Source": "Repository",
+      "Encoding": "UTF-8",
+      "Type": "Package",
+      "Maintainer": "Peter Carbonetto <pcarbo@uchicago.edu>",
+      "Authors@R": "c(person(\"Matthew\",\"Stephens\",role=\"aut\", email=\"mstephens@uchicago.edu\"), person(\"Peter\",\"Carbonetto\",role=c(\"aut\",\"cre\"), email=\"pcarbo@uchicago.edu\"), person(\"Chaoxing\",\"Dai\",role=\"ctb\"), person(\"David\",\"Gerard\",role=\"aut\"), person(\"Mengyin\",\"Lu\",role=\"aut\"), person(\"Lei\",\"Sun\",role=\"aut\"), person(\"Jason\",\"Willwerscheid\",role=\"aut\"), person(\"Nan\",\"Xiao\",role=\"aut\"), person(\"Mazon\",\"Zeng\",role=\"ctb\"))",
+      "Date": "2022-02-22",
+      "Title": "Methods for Adaptive Shrinkage, using Empirical Bayes",
+      "Description": "The R package 'ashr' implements an Empirical Bayes approach for large-scale hypothesis testing and false discovery rate (FDR) estimation based on the methods proposed in M. Stephens, 2016, \"False discovery rates: a new deal\", <DOI:10.1093/biostatistics/kxw041>. These methods can be applied whenever two sets of summary statistics---estimated effects and standard errors---are available, just as 'qvalue' can be applied to previously computed p-values. Two main interfaces are provided: ash(), which is more user-friendly; and ash.workhorse(), which has more options and is geared toward advanced users. The ash() and ash.workhorse() also provides a flexible modeling interface that can accommodate a variety of likelihoods (e.g., normal, Poisson) and mixture priors (e.g., uniform, normal).",
+      "Depends": [
+        "R (>= 3.1.0)"
+      ],
+      "Imports": [
+        "Matrix",
+        "stats",
+        "graphics",
+        "Rcpp (>= 0.10.5)",
+        "truncnorm",
+        "mixsqp",
+        "SQUAREM",
+        "etrunct",
+        "invgamma"
+      ],
+      "Suggests": [
+        "testthat",
+        "knitr",
+        "rmarkdown",
+        "ggplot2",
+        "REBayes"
+      ],
+      "LinkingTo": [
+        "Rcpp"
+      ],
+      "License": "GPL (>= 3)",
+      "NeedsCompilation": "yes",
+      "URL": "https://github.com/stephens999/ashr",
+      "BugReports": "https://github.com/stephens999/ashr/issues",
+      "VignetteBuilder": "knitr",
+      "RoxygenNote": "7.1.2",
+      "Author": "Matthew Stephens [aut], Peter Carbonetto [aut, cre], Chaoxing Dai [ctb], David Gerard [aut], Mengyin Lu [aut], Lei Sun [aut], Jason Willwerscheid [aut], Nan Xiao [aut], Mazon Zeng [ctb]",
+      "Repository": "CRAN",
+      "ExperimentalWindowsRuntime": "ucrt"
+    },
     "askpass": {
       "Package": "askpass",
       "Version": "1.1",
@@ -2085,15 +2152,15 @@
     },
     "boot": {
       "Package": "boot",
-      "Version": "1.3-32",
+      "Version": "1.3-28.1",
       "Source": "Repository",
       "Priority": "recommended",
-      "Date": "2025-08-29",
-      "Authors@R": "c(person(\"Angelo\", \"Canty\", role = \"aut\", email = \"cantya@mcmaster.ca\",  comment = \"author of original code for S\"), person(\"Brian\", \"Ripley\", role = c(\"aut\", \"trl\"), email = \"Brian.Ripley@R-project.org\", comment = \"conversion to R, maintainer 1999--2022, author of parallel support\"), person(\"Alessandra R.\", \"Brazzale\", role = c(\"ctb\", \"cre\"), email = \"brazzale@stat.unipd.it\", comment = \"minor bug fixes\"))",
-      "Maintainer": "Alessandra R. Brazzale <brazzale@stat.unipd.it>",
+      "Date": "2022-11-21",
+      "Authors@R": "c(person(\"Angelo\", \"Canty\", role = \"aut\", email = \"cantya@mcmaster.ca\"), person(\"Brian\", \"Ripley\", role = c(\"aut\", \"trl\", \"cre\"), email = \"ripley@stats.ox.ac.uk\", comment = \"author of parallel support\"))",
+      "Maintainer": "Brian Ripley <ripley@stats.ox.ac.uk>",
       "Note": "Maintainers are not available to give advice on using a package they did not author.",
       "Description": "Functions and datasets for bootstrapping from the book \"Bootstrap Methods and Their Application\" by A. C. Davison and  D. V. Hinkley (1997, CUP), originally written by Angelo Canty for S.",
-      "Title": "Bootstrap Functions",
+      "Title": "Bootstrap Functions (Originally by Angelo Canty for S)",
       "Depends": [
         "R (>= 3.0.0)",
         "graphics",
@@ -2107,8 +2174,9 @@
       "ByteCompile": "yes",
       "License": "Unlimited",
       "NeedsCompilation": "no",
-      "Author": "Angelo Canty [aut] (author of original code for S), Brian Ripley [aut, trl] (conversion to R, maintainer 1999--2022, author of parallel support), Alessandra R. Brazzale [ctb, cre] (minor bug fixes)",
-      "Repository": "CRAN"
+      "Author": "Angelo Canty [aut], Brian Ripley [aut, trl, cre] (author of parallel support)",
+      "Repository": "CRAN",
+      "Encoding": "UTF-8"
     },
     "brio": {
       "Package": "brio",
@@ -3320,6 +3388,25 @@
       "Maintainer": "Hadley Wickham <hadley@rstudio.com>",
       "Repository": "CRAN",
       "ExperimentalWindowsRuntime": "ucrt"
+    },
+    "etrunct": {
+      "Package": "etrunct",
+      "Version": "0.1",
+      "Source": "Repository",
+      "Type": "Package",
+      "Title": "Computes Moments of Univariate Truncated t Distribution",
+      "Author": "Matthew Stephens",
+      "Maintainer": "Matthew Stephens <mstephens@uchicago.edu>",
+      "Description": "Computes moments of univariate truncated t distribution. There is only one exported function, e_trunct(), which should be seen for details.",
+      "License": "MIT + file LICENSE",
+      "Encoding": "UTF-8",
+      "LazyData": "true",
+      "RoxygenNote": "5.0.1",
+      "Suggests": [
+        "testthat"
+      ],
+      "NeedsCompilation": "no",
+      "Repository": "CRAN"
     },
     "evaluate": {
       "Package": "evaluate",
@@ -4706,6 +4793,54 @@
       "Maintainer": "Hadley Wickham <hadley@posit.co>",
       "Repository": "RSPM"
     },
+    "invgamma": {
+      "Package": "invgamma",
+      "Version": "1.1",
+      "Source": "Repository",
+      "Type": "Package",
+      "Title": "The Inverse Gamma Distribution",
+      "URL": "https://github.com/dkahle/invgamma",
+      "BugReports": "https://github.com/dkahle/invgamma/issues",
+      "Authors@R": "c( person(\"David\", \"Kahle\", email = \"david.kahle@gmail.com\", role = c(\"aut\", \"cre\", \"cph\")), person(\"James\", \"Stamey\", email = \"james_stamey@baylor.edu\", role = c(\"aut\", \"cph\")) )",
+      "Description": "Light weight implementation of the standard distribution functions for the inverse gamma distribution, wrapping those for the gamma distribution in the stats package.",
+      "License": "GPL-2",
+      "RoxygenNote": "6.0.1",
+      "NeedsCompilation": "no",
+      "Author": "David Kahle [aut, cre, cph], James Stamey [aut, cph]",
+      "Maintainer": "David Kahle <david.kahle@gmail.com>",
+      "Repository": "CRAN",
+      "Encoding": "UTF-8"
+    },
+    "irlba": {
+      "Package": "irlba",
+      "Version": "2.3.5.1",
+      "Source": "Repository",
+      "Type": "Package",
+      "Title": "Fast Truncated Singular Value Decomposition and Principal Components Analysis for Large Dense and Sparse Matrices",
+      "Date": "2021-12-05",
+      "Authors@R": "c( person(\"Jim\", \"Baglama\", role=c(\"aut\", \"cph\"), email=\"jbaglama@uri.edu\"), person(\"Lothar\", \"Reichel\", role=c(\"aut\", \"cph\"), email=\"reichel@math.kent.edu\"), person(\"B. W.\", \"Lewis\", role=c(\"aut\",\"cre\",\"cph\"), email=\"blewis@illposed.net\"))",
+      "Description": "Fast and memory efficient methods for truncated singular value decomposition and principal components analysis of large sparse and dense matrices.",
+      "Depends": [
+        "R (>= 3.6.2)",
+        "Matrix"
+      ],
+      "LinkingTo": [
+        "Matrix"
+      ],
+      "Imports": [
+        "stats",
+        "methods"
+      ],
+      "License": "GPL-3",
+      "BugReports": "https://github.com/bwlewis/irlba/issues",
+      "RoxygenNote": "5.0.1",
+      "NeedsCompilation": "yes",
+      "Author": "Jim Baglama [aut, cph], Lothar Reichel [aut, cph], B. W. Lewis [aut, cre, cph]",
+      "Maintainer": "B. W. Lewis <blewis@illposed.net>",
+      "Repository": "CRAN",
+      "Encoding": "UTF-8",
+      "ExperimentalWindowsRuntime": "ucrt"
+    },
     "isoband": {
       "Package": "isoband",
       "Version": "0.2.7",
@@ -5522,6 +5657,48 @@
       "NeedsCompilation": "yes",
       "Repository": "CRAN",
       "Encoding": "UTF-8",
+      "ExperimentalWindowsRuntime": "ucrt"
+    },
+    "mixsqp": {
+      "Package": "mixsqp",
+      "Version": "0.3-48",
+      "Source": "Repository",
+      "Encoding": "UTF-8",
+      "Type": "Package",
+      "Date": "2022-11-15",
+      "Title": "Sequential Quadratic Programming for Fast Maximum-Likelihood Estimation of Mixture Proportions",
+      "Authors@R": "c(person(\"Youngseok\",\"Kim\",role=\"aut\", email=\"youngseok@uchicago.edu\"), person(\"Peter\",\"Carbonetto\",role=c(\"aut\",\"cre\"), email=\"peter.carbonetto@gmail.com\"), person(\"Mihai\",\"Anitescu\",role=\"aut\"), person(\"Matthew\",\"Stephens\",role=\"aut\"), person(\"Jason\",\"Willwerscheid\",role=\"ctb\"), person(\"Jean\",\"Morrison\",role=\"ctb\"))",
+      "URL": "https://github.com/stephenslab/mixsqp",
+      "BugReports": "https://github.com/stephenslab/mixsqp/issues",
+      "Depends": [
+        "R (>= 3.3.0)"
+      ],
+      "Description": "Provides an optimization method based on sequential quadratic programming (SQP) for maximum likelihood estimation of the mixture proportions in a finite mixture model where the component densities are known. The algorithm is expected to obtain solutions that are at least as accurate as the state-of-the-art MOSEK interior-point solver (called by function \"KWDual\" in the 'REBayes' package), and they are expected to arrive at solutions more quickly when the number of samples is large and the number of mixture components is not too large. This implements the \"mix-SQP\" algorithm, with some improvements, described in Y. Kim, P. Carbonetto, M. Stephens & M. Anitescu (2020) <DOI:10.1080/10618600.2019.1689985>.",
+      "License": "MIT + file LICENSE",
+      "Imports": [
+        "utils",
+        "stats",
+        "irlba",
+        "Rcpp (>= 0.12.15)"
+      ],
+      "Suggests": [
+        "REBayes",
+        "Rmosek",
+        "testthat",
+        "knitr",
+        "rmarkdown"
+      ],
+      "LinkingTo": [
+        "Rcpp",
+        "RcppArmadillo"
+      ],
+      "LazyData": "true",
+      "NeedsCompilation": "yes",
+      "VignetteBuilder": "knitr",
+      "RoxygenNote": "7.1.2",
+      "Author": "Youngseok Kim [aut], Peter Carbonetto [aut, cre], Mihai Anitescu [aut], Matthew Stephens [aut], Jason Willwerscheid [ctb], Jean Morrison [ctb]",
+      "Maintainer": "Peter Carbonetto <peter.carbonetto@gmail.com>",
+      "Repository": "CRAN",
       "ExperimentalWindowsRuntime": "ucrt"
     },
     "modeltools": {
@@ -7756,6 +7933,29 @@
       "Author": "Lionel Henry [aut, cre], Hadley Wickham [aut], RStudio [cph, fnd]",
       "Maintainer": "Lionel Henry <lionel@rstudio.com>",
       "Repository": "CRAN"
+    },
+    "truncnorm": {
+      "Package": "truncnorm",
+      "Version": "1.0-9",
+      "Source": "Repository",
+      "Title": "Truncated Normal Distribution",
+      "Description": "Density, probability, quantile and random number generation functions for the truncated normal distribution.",
+      "Authors@R": "c(person(\"Olaf\", \"Mersmann\", role=c(\"aut\", \"cre\"),  email=\"olafm@p-value.net\"), person(\"Heike\", \"Trautmann\", role=c(\"aut\")), person(\"Detlef\", \"Steuer\", role=c(\"aut\")), person(\"Björn\", \"Bornkamp\", role=c(\"aut\")))",
+      "URL": "https://github.com/olafmersmann/truncnorm",
+      "BugReports": "https://github.com/olafmersmann/truncnorm/issues",
+      "Depends": [
+        "R (>= 3.4.0)"
+      ],
+      "Suggests": [
+        "testthat"
+      ],
+      "License": "GPL (>= 2)",
+      "Encoding": "UTF-8",
+      "NeedsCompilation": "yes",
+      "Author": "Olaf Mersmann [aut, cre], Heike Trautmann [aut], Detlef Steuer [aut], Björn Bornkamp [aut]",
+      "Maintainer": "Olaf Mersmann <olafm@p-value.net>",
+      "Repository": "CRAN",
+      "ExperimentalWindowsRuntime": "ucrt"
     },
     "tweenr": {
       "Package": "tweenr",
