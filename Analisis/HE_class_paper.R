@@ -1,4 +1,4 @@
-#########################################################################
+ï»¿#########################################################################
 ################################################################################
 # 1-1-1 Analisis de datos mediante classification of patients based on H&E TIL results ====
 #########################################################################
@@ -53,6 +53,9 @@ pathLocalResults <- function(x) {
   completePath <- file.path(getwd(), "Resultados", x)
   return(completePath)
 }
+
+# Asegurar que el directorio de resultados y subcarpetas existan
+dir.create(pathLocalResults("HE clas Results"), showWarnings = FALSE, recursive = TRUE)
 
 
 
@@ -458,7 +461,7 @@ clinical <- clinical %>% filter(!is.na(til_percentage))
 # Initialize a new column for immune classification
 clinical$HE_clas <- NA
 
-## Esto que aparece abajo, será ignorado al correr el codigo, es como comentarlo
+## Esto que aparece abajo, serï¿½ ignorado al correr el codigo, es como comentarlo
 if (FALSE) {
 censored_time <- clinical$censored_time
 clinical$event_indicator_binary <- ifelse(clinical$event_indicator == TRUE, 1,0)
@@ -3747,9 +3750,9 @@ grid.arrange(g1, g2, g3, ncol = 3)  # or nrow = 3 for vertical layout
 
 # Set relevant paths
 list.files()
-in_path <- "03_results" #Path where are DEG result
-out_path <- "03_results" #Path where will be GSEA result
-bg_path <- "02_data/Pathways" #Path where are gmt files (gene sets download from GSEA page)
+in_path <- "Resultados" #Path where are DEG result
+out_path <- "Resultados" #Path where will be GSEA result
+bg_path <- "Datos/Pathways" #Path where are gmt files (gene sets download from GSEA page)
 
 # Functions ===================================================
 ## Function: Adjacency matrix to list -------------------------
@@ -3849,7 +3852,7 @@ kegg_df <- data.frame(
 print(kegg_df)
 
 # (Opcional) Guardar como CSV
-write.csv(kegg_df, file = "02_data/Pathways/filtered_kegg_pathways_by_category.csv", row.names = FALSE)
+write.csv(kegg_df, file = "Datos/Pathways/filtered_kegg_pathways_by_category.csv", row.names = FALSE)
 
 
 ## 2. Prepare background genes (gene sets)-----------------------------------------------
