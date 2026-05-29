@@ -1,4 +1,4 @@
-﻿#########################################################################
+#########################################################################
 ################################################################################
 # 1-1-1 Analisis de datos mediante classification of patients based on H&E TIL results ====
 #########################################################################
@@ -837,6 +837,8 @@ mosaicplot(contingency_table,
            main="PAM50 proportions among stages",
            sub = paste("p-value by Chi-squared: ", round(chi_sq_test$p.value, 5)))
 
+
+#### COMPARISONS BETWEEN Immune groups and tumoral charatceristics
 #### Comparson of PAM50 subtypes proportions between high and low HE groups ====
 
 # Create a contingency table
@@ -879,7 +881,7 @@ contingency_table <- table(clinical$HE_clas, clinical$stage)
 summary(contingency_table)
 
 # Perform Chi-square test
-chi_sq_test <- chisq.test(contingency_table)
+chi_sq_test <- fisher.test(contingency_table)
 
 # View the results
 print(chi_sq_test)
@@ -907,7 +909,7 @@ mosaicplot(contingency_table,
 
 
 # Association between node status and immune class with a direction
-library(DescTools)
+#library(DescTools)
 
 cochran_test <- CochranArmitageTest(contingency_table)
 print(cochran_test)
@@ -970,6 +972,14 @@ mosaicplot(contingency_table,
            dir = "h",
            main="Pathology proportions between Immune groups",
            sub = paste("p-value by Chi-squared: ", round(chi_sq_test$p.value, 4)))
+
+# Association between node status and immune class with a direction
+#library(DescTools)
+
+cochran_test <- CochranArmitageTest(contingency_table)
+print(cochran_test)
+
+
 
 ### ER, PR, HER2 status ====
 hr_her2_status <- read.csv2(pathLocalDb("clinical_status.csv"), sep =",")
