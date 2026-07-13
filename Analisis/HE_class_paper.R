@@ -41,13 +41,21 @@ library(car)
 library(DescTools)
 library(forestplot)
 library(ashr)
+library(e1071)
+library(moments)
+library(gt)
+library(purrr)
+library(timeROC)
+library(riskRegression)
+library(dunn.test)
+library(gtsummary)
+library(huxtable)
 
 
 pathLocalDb <- function(x) {
   completePath <- file.path(getwd(), "Datos", x)
   return(completePath)
 }
-
 
 pathLocalResults <- function(x) {
   completePath <- file.path(getwd(), "Resultados", x)
@@ -273,6 +281,35 @@ perform_normality_tests <- function(data_frame, columns, group_column = NULL) {
   return(results)
 }
 
+perform_residual_normality_tests <- function(data_frame, columns, group_column) {
+  results <- list()  # Inicializar la lista de resultados
+  
+  # Asegurar que la columna de agrupaci?n sea un factor
+  data_frame[[group_column]] <- as.factor(data_frame[[group_column]])
+  
+  for (col in columns) {
+    # 1. Crear la f?rmula din?mica: variable ~ grupo
+    formula_str <- as.formula(paste(col, "~", group_column))
+    
+    # 2. Ajustar el modelo lineal
+    model <- lm(formula_str, data = data_frame, na.action = na.exclude)
+    
+    # 3. Extraer los residuos del modelo
+    residuals_data <- residuals(model)
+    
+    # 4. Realizar la prueba de Shapiro-Wilk sobre los residuos
+    normal_test <- shapiro.test(residuals_data)
+    
+    # 5. Guardar los resultados
+    results[[col]] <- list(
+      statistic = normal_test$statistic,
+      p_value = normal_test$p.value
+    )
+  }
+  
+  return(results)
+}
+
 
 # wilcoxon_test_function <- function(data, column, condition_column, condition_value) {
 #   # Extract values based on condition
@@ -361,7 +398,6 @@ clinical[] <- lapply(clinical, function(x) {
 })
 
 
-
 clinical$PAM50_Subtype <- as.factor(as.character(clinical$PAM50_Subtype))
 levels(clinical$PAM50_Subtype)
 
@@ -385,7 +421,6 @@ TCGA_BRCA_TIL_HE<- TCGA_BRCA_TIL_HE %>%
 
 # Select only "patient" and "til_percentage"
 #Using library(dplyr)
-library(dplyr)
 TCGA_BRCA_TIL_HE  <- TCGA_BRCA_TIL_HE  %>% 
   select(patient, til_percentage)
 
@@ -393,97 +428,60 @@ TCGA_BRCA_TIL_HE  <- TCGA_BRCA_TIL_HE  %>%
 clinical <- clinical %>%
   left_join(TCGA_BRCA_TIL_HE, by = "patient")
 
-
-#################################################################################
-#### Univariable Cox for HE TIL percentage, immune score and cell population  ====
-
-### Survival Object 
-
-censored_time <- pmin(clinical$overall_survival, 3650)
-event_indicator <- clinical$vital_status_binary & (clinical$overall_survival <= 3650)
-
-#creamos un objeto "surv" con la funci?n Surv()
-surv_obj <- Surv(censored_time,
-                 event_indicator)
-
-
-# surv_obj <- Surv(clinical$censored_time,
-#                  clinical$event_indicator)
-
-#Obtain pvalue and coefficient for each cell 
-immune_cell_columns <- colnames(clinical)[c(94:105,121)] #ojo 121 es para TIL si no he clasificado en high y low en funcion de Immune score
-univ_cell_results <- list()
-for (col in immune_cell_columns) {
-  formula <- as.formula(paste("surv_obj ~", col))
-  univ_cox <- coxph(formula, data = clinical)
-  summary_univ_cox <- summary(univ_cox)
-  p_value <- summary_univ_cox[["logtest"]][["pvalue"]]
-  CI <- summary_univ_cox$conf.int[, c("lower .95", "upper .95")]
-  HR <- summary_univ_cox$coefficients[1, "exp(coef)"]
-  univ_cell_results[[col]] <- list(p_value = p_value, HR = HR, CI=CI)
-}
-
-
-# Convert the list to a data frame
-cox_results_df <- do.call(rbind, lapply(names(univ_cell_results), function(col) {
-  c(Cell_Type = col, 
-    P_Value = univ_cell_results[[col]]$p_value, 
-    HR = univ_cell_results[[col]]$HR,
-    CI = univ_cell_results[[col]]$CI)
-}))
-
-# Convert columns to appropriate types
-cox_results_df <- data.frame(cox_results_df, stringsAsFactors = FALSE)
-cox_results_df$P_Value <- as.numeric(cox_results_df$P_Value)
-cox_results_df$HR <- as.numeric(cox_results_df$HR)
-cox_results_df$CI.lower..95 <- as.numeric(cox_results_df$CI.lower..95)
-cox_results_df$CI.upper..95 <- as.numeric(cox_results_df$CI.upper..95)
-
-# Sort the data frame by P_Value
-cox_results_df <- cox_results_df[order(cox_results_df$P_Value), ]
-
-# Print the sorted results
-print(cox_results_df)
-
-
-write.csv2(cox_results_df, file=pathLocalResults("Univariable Cox for immune score til percentages and quantiseq proportions patients without prior treatment.csv"), row.names = FALSE)
-
-
-#########################################################################
-#### Classification of patients based on til percentage ====
-
 ## Elimino los pacientes que no tienen dato para til_percentage
-library(dplyr)
 clinical <- clinical %>% filter(!is.na(til_percentage))
 
-##### Comparar diferentes cut off
 
-# Initialize a new column for immune classification
-clinical$HE_clas <- NA
+### Marker status
+hr_her2_status <- read.csv2(pathLocalDb("clinical_status.csv"), sep =",")
 
-## Esto que aparece abajo, ser� ignorado al correr el codigo, es como comentarlo
-if (FALSE) {
-censored_time <- clinical$censored_time
-clinical$event_indicator_binary <- ifelse(clinical$event_indicator == TRUE, 1,0)
-event_indicator_binary <- clinical$event_indicator_binary
+hr_her2_status <- hr_her2_status %>% 
+  select(patient, er_status_by_ihc, pr_status_by_ihc, her2_status_ihc_fish)
 
-# Define cut off
-surv_cut_point <- surv_cutpoint(
-  clinical,
-  time = "censored_time",
-  event = "event_indicator_binary",
-  colnames(clinical[122]), #122 es la columna con til_percentage
-  minprop = 0.1,
-  progressbar = TRUE
+clinical <- left_join(clinical, hr_her2_status, by= "patient")
+
+
+clinical[c("er_status_by_ihc", "pr_status_by_ihc", "her2_status_ihc_fish")] <- lapply(clinical[c("er_status_by_ihc", "pr_status_by_ihc", "her2_status_ihc_fish")], factor)
+
+clinical$hr_status <- ifelse (
+  clinical$pr_status_by_ihc == "Positive" | clinical$er_status_by_ihc == "Positive", "Positive",
+  ifelse (clinical$pr_status_by_ihc == "Negative"  & clinical$er_status_by_ihc == "Negative" , "Negative",
+          NA)
 )
 
-HE_clas_cutoff <-summary(surv_cut_point)$cutpoint 
-HE_clas_cutoff#0.2338073 -> ES MUY BAJO, VER HISTOGRAMA Y CLASIFICAR POR LA MEDIANA
-}
+clinical$her2_status_ihc_fish_y <- ifelse (
+  clinical$her2_status_ihc_fish  == "Positive" | clinical$her2_status_ihc_fish  == "Negative", as.character(clinical$her2_status_ihc_fish),
+  NA
+)
+clinical$her2_status_ihc_fish_y <- as.factor(clinical$her2_status_ihc_fish_y)
 
+clinical$pr_status_by_ihc<- ifelse (
+  clinical$pr_status_by_ihc  == "Positive" | clinical$pr_status_by_ihc  == "Negative", as.character(clinical$pr_status_by_ihc),
+  NA
+)
+clinical$pr_status_by_ihc <- as.factor(clinical$pr_status_by_ihc)
+
+clinical$er_status_by_ihc<- ifelse (
+  clinical$er_status_by_ihc  == "Positive" | clinical$er_status_by_ihc  == "Negative", as.character(clinical$er_status_by_ihc),
+  NA
+)
+clinical$er_status_by_ihc <- as.factor(clinical$er_status_by_ihc)
+
+
+#################################################################################
+## TIL % Distribution ====
 
 range(clinical$til_percentage, na.rm = TRUE)
 hist(clinical$til_percentage, breaks = seq(0,35,1))
+summary(clinical$til_percentage)
+sum(clinical$til_percentage > 10, na.rm = TRUE) #50
+
+# Calcula la asimetr?a de Fisher
+#Test de hipotesis para evaluar si la asimetr?a difiere de 0 (alternative hypothesis: data have a skewness)
+#library(moments)
+agostino.test(clinical$til_percentage)
+# skew = 3.3304, z = 18.4137, p-value < 2.2e-16
+
 # "M1" = "#80b1d3",
 # "M2" = "#b3de69", 
 # "M3" = "#bc80bd", 
@@ -511,68 +509,27 @@ print(p)
 ggsave(pathLocalResults("HE clas Results/FigureS1_histogram.pdf"), p, width = 8, height = 6, device = cairo_pdf)
 
 
-
-
-summary(clinical$til_percentage)
-
-
-sum(clinical$til_percentage > 10, na.rm = TRUE) #50
-
-HE_clas_cutoff <- median(clinical$til_percentage, na.rm = TRUE)
-
-#Columna HE_clas
-clinical$HE_clas <- ifelse(
-  clinical$til_percentage >= HE_clas_cutoff,
-  "high", "low"
-)
-clinical$HE_clas <- as.factor(clinical$HE_clas)
-
-# por cox
+## Univariable Cox for TIL percentage (continuous) and different cut-offs ====
 
 surv_obj <- Surv(clinical$censored_time,
                  clinical$event_indicator)
 
-cox_fit <- coxph(Surv(censored_time, event_indicator) ~ HE_clas, data = clinical)
-summary_cox <- summary(cox_fit)
-summary_cox 
+formula <- as.formula(paste("surv_obj ~", colnames(clinical)[121]))
+univ_cox <- coxph(formula, data = clinical)
+summary_univ_cox <- summary(univ_cox)
+P_Value <- summary_univ_cox[["logtest"]][["pvalue"]]
+CI.lower..95 <- summary_univ_cox$conf.int[, "lower .95"]
+CI.upper..95 <- summary_univ_cox$conf.int[, "upper .95"]
+HR <- summary_univ_cox$coefficients[1, "exp(coef)"]
 
-
-# Interpretation
-# Call:
-# coxph(formula = Surv(censored_time, event_indicator) ~ HE_clas, 
-#     data = clinical)
-# 
-#   n= 669, number of events= 85 
-# 
-#              coef exp(coef) se(coef)   z Pr(>|z|)       exp(coef) is HR, se(coef) es la desviacion estandar del coef, z is Wald test statistic: higher absolute value means more significant.
-# HE_claslow 0.8301    2.2934   0.2306 3.6 0.000319 ***
-# ---
-# Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
-# 
-#            exp(coef) exp(-coef) lower .95 upper .95
-# HE_claslow     2.293      0.436      1.46     3.604
-# 
-# Concordance= 0.6  (se = 0.03 )
-# Likelihood ratio test= 13.76  on 1 df,   p=2e-04
-# Wald test            = 12.96  on 1 df,   p=3e-04
-# Score (logrank) test = 13.68  on 1 df,   p=2e-04
-# 
-# 
-# Concordance (C-index) measures how well the model discriminates between patients with better vs worse survival.Range: 0.5 (no better than chance) to 1 (perfect prediction).
-# Likelihood ratio test: Compares full vs. null model using log-likelihood. Significant improvement.
-# Wald test: Tests if coef / se(coef) is different from 0. Confirms significance of effect.
-# Score (Logrank) test: Based on rank data. Also confirms variable is significantly associated with surviva
-
-
+cox_results_df <- data.frame(P_Value,CI.lower..95,CI.upper..95, HR) 
 
 
 # Evaluate different cut off for HE clas and generate the results data frame
 
 # Define your cutoffs (fixed the sequence - removed 'by' parameter since you have specific values)
-cutoffs <- c(0.5, 1, 1.074332, 2.0, 2.5, 3.0, 3.5, 4, 4.5, 5.0)
+cutoffs <- c(0.5, 1, 1.074332, 2.0, 2.5, 3.0, 3.5, 4, 4.5, 5.0, 6.0, 7.0, 8.0, 9.0, 10)
 #cutoffs <- c(1.0, 1.074717, 2.0,3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10)
-
-clinical$HE_clas <- relevel(clinical$HE_clas, ref = "low")
 
 cox_cut_results <- lapply(cutoffs, function(cut) {
   # Create the dichotomized variable
@@ -596,10 +553,11 @@ cox_cut_results <- lapply(cutoffs, function(cut) {
     HR = summary_cox$coefficients[2],
     lower_CI = summary_cox$conf.int[3],
     upper_CI = summary_cox$conf.int[4],
-    p_value = summary_cox$coefficients[5],
+    p_value = summary_cox[["logtest"]][["pvalue"]],
     stringsAsFactors = FALSE
   )
 })
+
 
 # Combine results into one data frame
 cox_cut_results_df <- do.call(rbind, cox_cut_results)
@@ -611,7 +569,7 @@ write.csv2(cox_cut_results_df, file=pathLocalResults("HE clas Results/Univarable
 
 
 # Assuming you have a data frame with cutoff values, HRs, and p-values
-library(forestplot)
+#library(forestplot)
 
 # Create forest plot
 # Create a text table
@@ -620,17 +578,28 @@ tabletext <- cbind(
   c("High (n)", as.character(cox_cut_results_df$n_high)),
   c("Low (n)", as.character(cox_cut_results_df$n_low)),
   c("HR (95% CI)", 
-    sprintf("%.2f (%.2f–%.2f)", 
+    sprintf("%.2f (%.2f-%.2f)", 
             cox_cut_results_df$HR, 
             cox_cut_results_df$lower_CI, 
             cox_cut_results_df$upper_CI)),
   c("p-value", 
     formatC(cox_cut_results_df$p_value, format = "e", digits = 2))
 )
+tabletext
 
-## Add til% continue variable to forest plot
-cox_results_df_til <- cox_results_df[2,]
-new_row <- matrix(c("TIL%", "-", "-", "0.94 (0.88-1.00)", "2.52e-02"), nrow = 1) #valores extraidos de cox_results_df_til 
+# 1. Format the HR and CI into a single string: "HR (CI_lower-CI_upper)"
+# "%.2f" ensures the numbers are rounded to 2 decimal places.
+hr_ci <- sprintf("%.2f (%.2f-%.2f)", 
+                 cox_results_df$HR[1], 
+                 cox_results_df$CI.lower..95[1], 
+                 cox_results_df$CI.upper..95[1])
+# 2. Format the P-value 
+# "%.2e" formats the number in scientific notation with 2 decimal places.
+p_val <- sprintf("%.2e", cox_results_df$P_Value[1])
+
+# 3. Create the matrix
+new_row <- matrix(c("TIL%", "-", "-", hr_ci, p_val), nrow = 1)
+
 # Combine: first header row, then new row, then rest
 tabletext <- rbind(tabletext[1, , drop = FALSE], new_row, tabletext[-1, , drop = FALSE])
 
@@ -645,10 +614,10 @@ new_row_df <- data.frame(
   cutoff = "TIL%",
   n_high = NA,
   n_low = NA,
-  HR = 0.94,
-  lower_CI = 0.88,
-  upper_CI = 1.00,
-  p_value = 2.52e-02,
+  HR = round(cox_results_df$HR,2),  #0.94,
+  lower_CI = round(cox_results_df$CI.lower..95,2), #0.88,
+  upper_CI = round(cox_results_df$CI.upper..95,2), #1.00,
+  p_value = round(cox_results_df$P_Value,3), #2.52e-02,
   stringsAsFactors = FALSE
 )
 
@@ -691,14 +660,10 @@ forest <- forestplot(
   title = "Univariable Cox HR by Cutoff",
   xlab = "Hazard Ratio (log scale)")
 
-
-
 print(forest)
 dev.off()
 
-
-##### Eleccion del cut off y generacion de columna HE_clas
-#Columna HE_clas
+## Clasificar pacientes en H-TIL y L-TIL ====
 
 clinical$HE_clas <- NA
 HE_clas_cutoff <- median(clinical$til_percentage, na.rm = TRUE)
@@ -709,10 +674,44 @@ clinical$HE_clas <- ifelse(
 )
 clinical$HE_clas <- as.factor(clinical$HE_clas)
 
-#########################################################################
-##### Curva Kaplan Meier entre high y low HE_clas (basado en TIL) ====
+## Survival analysis for HE clas = Cox y curvas de sobrevida ====
+# Por cox
+
 surv_obj <- Surv(clinical$censored_time,
                  clinical$event_indicator)
+
+cox_fit <- coxph(Surv(censored_time, event_indicator) ~ HE_clas, data = clinical)
+summary_cox <- summary(cox_fit)
+summary_cox 
+
+
+# Interpretation
+# Call:
+# coxph(formula = Surv(censored_time, event_indicator) ~ HE_clas, 
+#     data = clinical)
+# 
+#   n= 669, number of events= 85 
+# 
+#              coef exp(coef) se(coef)   z Pr(>|z|)       exp(coef) is HR, se(coef) es la desviacion estandar del coef, z is Wald test statistic: higher absolute value means more significant.
+# HE_claslow 0.8301    2.2934   0.2306 3.6 0.000319 ***
+# ---
+# Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+# 
+#            exp(coef) exp(-coef) lower .95 upper .95
+# HE_claslow     2.293      0.436      1.46     3.604
+# 
+# Concordance= 0.6  (se = 0.03 )
+# Likelihood ratio test= 13.76  on 1 df,   p=2e-04
+# Wald test            = 12.96  on 1 df,   p=3e-04
+# Score (logrank) test = 13.68  on 1 df,   p=2e-04
+# 
+# 
+# Concordance (C-index) measures how well the model discriminates between patients with better vs worse survival.Range: 0.5 (no better than chance) to 1 (perfect prediction).
+# Likelihood ratio test: Compares full vs. null model using log-likelihood. Significant improvement.
+# Wald test: Tests if coef / se(coef) is different from 0. Confirms significance of effect.
+# Score (Logrank) test: Based on rank data. Also confirms variable is significantly associated with surviva
+
+## Curva Kaplan Meier entre high y low HE_clas 
 
 curva_immune<- survfit(surv_obj ~ HE_clas, data = clinical)
 summary(curva_immune)
@@ -758,7 +757,6 @@ curva$table <- curva$table +
   )
 
 
-
 dir.create(dirname(pathLocalResults("HE clas Results/Figure_1b.pdf")),
            recursive = TRUE,
            showWarnings = FALSE)
@@ -787,7 +785,7 @@ chi_sq_test <- fisher.test(contingency_table) #ERROR NO SE PUEDE PORQUE NO HAY C
 # Create a contingency table
 contingency_table <- table(clinical$node_status, clinical$PAM50_Subtype)
 summary(contingency_table)
-
+contingency_table
 # Perform Chi-square test
 chi_sq_test <- fisher.test(contingency_table)
 
@@ -809,6 +807,7 @@ mosaicplot(contingency_table,
 # Create a contingency table
 contingency_table <- table(clinical$tumor_size, clinical$PAM50_Subtype)
 summary(contingency_table)
+contingency_table
 
 # Perform Chi-square test
 chi_sq_test <- chisq.test(contingency_table)
@@ -829,6 +828,11 @@ chi_sq_test <- fisher.test(contingency_table)
 print(chi_sq_test)
 
 
+# Association between stage and pam50 with a direction
+#library(DescTools)
+cochran_test <- CochranArmitageTest(contingency_table)
+print(cochran_test)
+
 ##### Plot PAM50 proportions
 # Plot contingency table, adding shade, control the colors in function of residuals from contingency table in the graph 
 mosaicplot(contingency_table,
@@ -844,13 +848,16 @@ mosaicplot(contingency_table,
 # Create a contingency table
 contingency_table <- table(clinical$HE_clas, clinical$PAM50_Subtype)
 summary(contingency_table)
-
+contingency_table
 # Perform Chi-square test
 chi_sq_test <- chisq.test(contingency_table)
 
 # View the results
 print(chi_sq_test)
 
+# Association between pam50 and he class with direction
+cochran_test <- CochranArmitageTest(contingency_table)
+print(cochran_test)
 
 ##### Plot PAM50 proportions
 # Plot contingency table, adding shade, control the colors in function of residuals from contingency table in the graph 
@@ -866,7 +873,7 @@ mosaicplot(contingency_table,
 # Create a contingency table
 contingency_table <- table(clinical$HE_clas, clinical$node_status)
 summary(contingency_table)
-
+contingency_table
 # Perform Chi-square test
 chi_sq_test <- chisq.test(contingency_table)
 
@@ -879,7 +886,7 @@ print(chi_sq_test)
 # Create a contingency table
 contingency_table <- table(clinical$HE_clas, clinical$stage)
 summary(contingency_table)
-
+contingency_table
 # Perform Chi-square test
 chi_sq_test <- fisher.test(contingency_table)
 
@@ -891,7 +898,7 @@ print(chi_sq_test)
 # Create a contingency table
 contingency_table <- table(clinical$HE_clas, clinical$tumor_size)
 summary(contingency_table)
-
+contingency_table
 # Perform Chi-square test
 chi_sq_test <- chisq.test(contingency_table)
 
@@ -907,13 +914,11 @@ mosaicplot(contingency_table,
            main="Node Status proportions between Immune groups",
            sub = paste("p-value by Chi-squared: ", round(chi_sq_test$p.value, 3)))
 
-
-# Association between node status and immune class with a direction
+# Association between tumor size and immune class with a direction
 #library(DescTools)
 
 cochran_test <- CochranArmitageTest(contingency_table)
 print(cochran_test)
-
 
 #### Comparson of stage proportions between high and low HE groups ====
 
@@ -938,9 +943,7 @@ mosaicplot(contingency_table,
 cochran_test <- CochranArmitageTest(contingency_table)
 print(cochran_test)
 
-
 #### Comparson of histological type proportions between high and low HE groups ====
-
 clinical$paper_BRCA_Pathology <- as.factor(as.character(clinical$paper_BRCA_Pathology))
 levels(clinical$paper_BRCA_Pathology)
 summary(clinical$paper_BRCA_Pathology)
@@ -966,6 +969,18 @@ chi_sq_test <- chisq.test(contingency_table)
 # View the results
 print(chi_sq_test)
 
+#Comparacion post-hoc
+#library(rcompanion)
+post_hoc <- pairwiseNominalIndependence(t(contingency_table),
+                                        fisher = FALSE,       # No necesitamos Fisher (muestra grande)
+                                        gtest  = FALSE,       # No necesitamos G-test
+                                        chisq  = TRUE,        # Queremos Chi-cuadrado por pares
+                                        method = "bonferroni") # Método de ajuste de p-valor
+
+post_hoc
+# R los calcula automáticamente dentro del objeto del Chi-cuadrado global
+residuos_ajustados <- chi_sq_test$stdres
+
 # Plot contingency table, adding shade, control the colors in function of residuals from contingency table in the graph 
 mosaicplot(contingency_table,
            shade = c(1,2), 
@@ -980,43 +995,7 @@ cochran_test <- CochranArmitageTest(contingency_table)
 print(cochran_test)
 
 
-
-### ER, PR, HER2 status ====
-hr_her2_status <- read.csv2(pathLocalDb("clinical_status.csv"), sep =",")
-
-hr_her2_status <- hr_her2_status %>% 
-  select(patient, er_status_by_ihc, pr_status_by_ihc, her2_status_ihc_fish)
-
-clinical <- left_join(clinical, hr_her2_status, by= "patient")
-
-
-clinical[c("er_status_by_ihc", "pr_status_by_ihc", "her2_status_ihc_fish")] <- lapply(clinical[c("er_status_by_ihc", "pr_status_by_ihc", "her2_status_ihc_fish")], factor)
-
-clinical$hr_status <- ifelse (
-  clinical$pr_status_by_ihc == "Positive"  | clinical$er_status_by_ihc == "Positive", "Positive",
-  ifelse (clinical$pr_status_by_ihc == "Negative"  & clinical$er_status_by_ihc == "Negative" , "Negative",
-          NA)
-)
-
-clinical$her2_status_ihc_fish_y <- ifelse (
-  clinical$her2_status_ihc_fish  == "Positive"  | clinical$her2_status_ihc_fish  == "Negative", as.character(clinical$her2_status_ihc_fish),
-  NA
-)
-clinical$her2_status_ihc_fish_y <- as.factor(clinical$her2_status_ihc_fish_y)
-
-clinical$pr_status_by_ihc<- ifelse (
-  clinical$pr_status_by_ihc  == "Positive"  | clinical$pr_status_by_ihc  == "Negative", as.character(clinical$pr_status_by_ihc),
-  NA
-)
-clinical$pr_status_by_ihc <- as.factor(clinical$pr_status_by_ihc)
-
-clinical$er_status_by_ihc<- ifelse (
-  clinical$er_status_by_ihc  == "Positive"  | clinical$er_status_by_ihc  == "Negative", as.character(clinical$er_status_by_ihc),
-  NA
-)
-clinical$er_status_by_ihc <- as.factor(clinical$er_status_by_ihc)
-
-# Asociation between immune group and PR, ER, HER2 status
+## Asociation between immune group and PR, ER, HER2 status ====
 #ER
 contingency_table <- table(
   droplevels(clinical$HE_clas[clinical$er_status_by_ihc != "[Not Evaluated]"]),
@@ -1042,7 +1021,7 @@ contingency_table
 summary(contingency_table)
 
 # Perform Chi-square test
-chi_sq_test <- fisher.test(contingency_table)
+chi_sq_test <- chisq.test(contingency_table)
 
 # View the results
 print(chi_sq_test)
@@ -1058,6 +1037,10 @@ summary(contingency_table)
 
 ######################################################################
 ### Analisis Cox Multivariado ====
+til_age <- coxph(surv_obj ~ til_percentage + age_at_index, clinical)
+cox.zph(til_age)
+
+#La edad viola el supuesto de proporcionalidad
 
 # Debido a que "age_at_index" viola el supuesto de Proportional Hazard para el modelo de Cox los pacientes seran estratificados
 # Crear categorias
@@ -1073,7 +1056,7 @@ surv_cut_point <- surv_cutpoint(
 )
 
 age_cutoff <-summary(surv_cut_point)$cutpoint 
-age_cutoff#0.2338073 -> ES MUY BAJO, VER HISTOGRAMA Y CLASIFICAR POR LA MEDIANA
+age_cutoff#70
 
 clinical$age_group <- as.factor(ifelse(clinical$age_at_index < 70, "< 70", "> 70"))
 levels(clinical$age_group)
@@ -1088,26 +1071,37 @@ surv_obj <- Surv(clinical$censored_time,
                  clinical$event_indicator)
 modelos_til <- list(
   MS1 = surv_obj ~ til_percentage + tumor_size,
-  MS2 = surv_obj ~ til_percentage + stage,
-  MS3 = surv_obj ~ til_percentage + PAM50_Subtype,
+  MS2 = surv_obj ~ til_percentage + stage, #este viola el supuesto de proporcionalidad
+  MS3 = surv_obj ~ til_percentage + PAM50_Subtype, #este viola el supuesto de proporcionalidad en el global, pero en el grafico de residuos esta bastante bien
   MS4 = surv_obj ~ til_percentage + age_group + tumor_size,
   MS5 = surv_obj ~ til_percentage + age_group + stage,
-  MS6 = surv_obj ~ til_percentage + age_group + PAM50_Subtype
+  MS6 = surv_obj ~ PAM50_Subtype  + age_group + til_percentage, #No viola el supuesto de proporcionalidad-> es el que presento en el paper
+  MS7 = surv_obj ~ PAM50_Subtype,
+  MS8 = surv_obj ~ PAM50_Subtype + age_group
 )
 
 # 1. Ejecutar los modelos
-resultados_cox_til <- lapply(modelos_til , function(f) coxph(f, data = clinical))
+resultados_cox_til <- lapply(modelos_til , function(f) coxph(f, data = clinical, tt = function(x, t, ...) x * t))
 resultados_cox_til 
-# install.packages("broom")
-library(broom)
-library(dplyr)
 
-# 2. Evaluación del Supuesto de Proporcionalidad (Schoenfeld)
+#mE QUEDO SOLO CON EL 6 Y EL 8
+resultados_cox_til <- resultados_cox_til[c(6, 8)]
+
+# 2. Evaluation of assumptions: proportionality (Schoenfeld)
 # Guardamos los tests en una lista para revisarlos uno a uno
 schoenfeld_tests_til <- lapply(resultados_cox_til, function(m) {
   test <- cox.zph(m)
   return(test)
 })
+
+# schoenfeld_tests_til <- lapply(resultados_cox_til, function(m) {
+#   # Si la f?rmula del modelo contiene la palabra "tt", saltarlo para evitar el error
+#   if (any(grepl("tt\\(", attr(m$terms, "term.labels")))) {
+#     return("Modelo con tt(): Supuesto corregido por definici?n")
+#   } else {
+#     return(cox.zph(m))
+#   }
+# })
 
 # Imprimir los p-valores globales de cada modelo
 cat("--- P-valores Globales del Test de Schoenfeld ---\n")
@@ -1125,20 +1119,28 @@ for (nombre in names(schoenfeld_tests_til)) {
 
 # El modelo MS1 y el MS4 violan el supuesto de proporcionalidad para el modelo global pero no para sus variables
 # Mientras que el modelo MS2 MS3 lo violan para til, 
-# Graficar residuos para MS1
-test_m1 <- cox.zph(resultados_cox_til[["MS1"]])
-plot(test_m1[1]) # Residuos para til_percentage
+
+# Graficar residuos para MS3
+test_m3 <- cox.zph(resultados_cox_til[["MS3"]])
+plot(test_m3[1]) # Residuos para til_percentage
 abline(h = 0, col = "red")
 
-# Graficar residuos para MS4
-test_m5 <- cox.zph(resultados_cox_til[["MS4"]])
-plot(test_m5[1]) # Residuos para til_percentage
+# Graficar residuos para MS6
+test_m6 <- cox.zph(resultados_cox_til[["MS6"]])
+plot(test_m6[1]) # Residuos para Subtype
+abline(h = 0, col = "red")
+plot(test_m6[3]) # Residuos para til
 abline(h = 0, col = "red")
 
+# Graficar residuos para MS8
+test_m8 <- cox.zph(resultados_cox_til[["MS8"]])
+plot(test_m8[1]) # Residuos para pam50
+abline(h = 0, col = "red")
 
+# Voy a quedarme solo con lo modelos MS6 (TIL + age +PAM y MS8: age + PAM)
 
 # 3. Evaluación de Multicolinealidad (VIF)
-library(car)
+#library(car)
 vif_resultados_til <- lapply(resultados_cox_til, function(m) {
   # Intentamos calcular VIF, capturando el error si la estratificación da problemas
   tryCatch(vif(m), error = function(e) return("Error en cálculo de VIF o Inf detectado"))
@@ -1149,23 +1151,47 @@ cat("\n--- Resultados de VIF por Modelo ---\n")
 print(vif_resultados_til)
 
 
+#1.1 Evaluacion de performance de modelos: AIC y C-index
+
+#Para todos los modelos
+# library(dplyr)
+# library(purrr)
+
+performance_table <- imap_dfr(resultados_cox_til, function(model, model_name) {
+  tibble(
+    Model   = model_name,
+    AIC     = round(AIC(model), 2),
+    C_index = round(model[["concordance"]][["concordance"]], 3)
+  )
+})
+
+# Ver el resultado
+print(performance_table)
+performance_table <- t(performance_table)
+performance_table <- as.data.frame(performance_table)
+
+performance_table[1,1] <- "PAM50-Age-TIL"
+performance_table[1,2] <- "PAM50-Age"
+
+performance_table
+
+write.xlsx(performance_table, file = pathLocalResults("HE clas Results/Multivariable_TIL_models_AIC_Cindex.xlsx"))
+
 # 4. Grafico de forest plot
-library(forestmodel)
-forest_model(resultados_cox_til[["MS1"]])
-forest_model(resultados_cox_til[["MS2"]])
-forest_model(resultados_cox_til[["MS3"]])
-forest_model(resultados_cox_til[["MS4"]])
-forest_model(resultados_cox_til[["MS5"]])
+#library(forestmodel)
 forest_model(resultados_cox_til[["MS6"]]) #este el el unico que no viola ningun supuesto
+forest_model(resultados_cox_til[["MS8"]]) 
+
 
 #Solo da significativo el modelo 3 (PAM50 age). Lo guardo para figura supplementaria
-ggsave(pathLocalResults("HE clas Results/FigureS2_forest_til.pdf"), forest_model(resultados_cox_til[["MS3"]]),  width = 8, height = 6, device = cairo_pdf)
+ggsave(pathLocalResults("HE clas Results/FigureS2_forest_PAM_age_til.pdf"), forest_model(resultados_cox_til[["MS6"]]),  width = 8, height = 6, device = cairo_pdf)
+ggsave(pathLocalResults("HE clas Results/FigureS2c_forest_PAM_age.pdf"), forest_model(resultados_cox_til[["MS8"]]),  width = 8, height = 6, device = cairo_pdf)
 
        
 # 1. Unificar todos los modelos en un solo dataframe
-library(dplyr)
-library(ggplot2)
-library(broom)
+#library(dplyr)
+#library(ggplot2)
+#library(broom)
 
 # 1. Extraer resultados y añadir las FILAS DE REFERENCIA manualmente
 extraer_con_ref <- function(modelo, nombre) {
@@ -1183,9 +1209,9 @@ extraer_con_ref <- function(modelo, nombre) {
   res <- res %>%
     mutate(term = case_when(
       term == "til_percentage" ~ "TIL percentage",
-      grepl("tumor_size", term) ~ gsub("tumor_size", "Tumor Size ", term),
-      grepl("node_status", term) ~ gsub("node_status", "Node Status ", term),
-      grepl("stage", term) ~ gsub("stage", "Stage ", term),
+      #grepl("tumor_size", term) ~ gsub("tumor_size", "Tumor Size ", term),
+      #grepl("node_status", term) ~ gsub("node_status", "Node Status ", term),
+      #grepl("stage", term) ~ gsub("stage", "Stage ", term),
       grepl("PAM50", term) ~ gsub("PAM50_Subtype", "PAM50 ", term),
       grepl("age", term) ~ gsub("age_group", "Age ", term),
       TRUE ~ term
@@ -1193,9 +1219,9 @@ extraer_con_ref <- function(modelo, nombre) {
     bind_rows(referencias) %>%
     # Solo nos quedamos con las variables que existen en ESTE modelo específico
     filter(term %in% c("TIL percentage",
-                       "Tumor Size T1", "Tumor Size T2", "Tumor Size T3", "Tumor Size T4",
-                       "Node Status 0", "Node Status 1 to 3", "Node Status more than 4",
-                       "Stage Stage I", "Stage Stage II", "Stage Stage III", "Stage Stage IV",
+                      # "Tumor Size T1", "Tumor Size T2", "Tumor Size T3", "Tumor Size T4",
+                       #"Node Status 0", "Node Status 1 to 3", "Node Status more than 4",
+                       #"Stage Stage I", "Stage Stage II", "Stage Stage III", "Stage Stage IV",
                        "PAM50 LumA", "PAM50 LumB",
                        "Age < 70", "Age > 70"))
   return(res)
@@ -1206,24 +1232,17 @@ df_grafico <- bind_rows(lapply(names(resultados_cox_til), function(x) extraer_co
 
 # 3. DEFINIR EL ORDEN DEL EJE Y (De abajo hacia arriba para que Immune Group quede arriba)
 orden_niveles <- rev(c(
-  "TIL percentage",
-  "Age < 70", "Age > 70",
-  "Tumor Size T1", "Tumor Size T2", "Tumor Size T3", "Tumor Size T4",
-  "Node Status 0", "Node Status 1 to 3", "Node Status more than 4",
-  "Stage Stage I", "Stage Stage II", "Stage Stage III", "Stage Stage IV",
-  "PAM50 LumA", "PAM50 LumB"
+  "TIL percentage",  
+  "PAM50 LumA", "PAM50 LumB",
+  "Age < 70", "Age > 70"
 ))
 
 df_grafico$term <- factor(df_grafico$term, levels = orden_niveles)
 
 # 4. Paleta de colores personalizada
 mis_colores <- c(
-  "MS1" = "#80b1d3",
-  "MS2" = "#b3de69", 
-  "MS3" = "#bc80bd", 
-  "MS4" = "#66c2a5",
-  "MS5" = "#fdb462",
-  "MS6" = "#fdb462"
+  "MS6" = "#80b1d3",
+  "MS8" = "#b3de69"
 )
 
 # 5. Generación del gráfico
@@ -1239,7 +1258,7 @@ grafico_til <- ggplot(df_grafico, aes(x = estimate, y = term)) +
   # Facetado por modelo para replicar la imagen b86dcd
   facet_grid(. ~ Modelo) +
   # Escala logaritmica constante para todos los modelos (0.8 a 25)
-  scale_x_log10(limits = c(0.8, 25), breaks = c(1, 2, 5, 10, 20)) +
+  scale_x_log10(limits = c(0.8, 10), breaks = c(1, 2, 5)) +
   # Aplicacion de LOS colores especificos
   scale_color_manual(values = mis_colores) +
   theme_bw() +
@@ -1257,11 +1276,10 @@ grafico_til <- ggplot(df_grafico, aes(x = estimate, y = term)) +
 print(grafico_til)
 
 # 4. Guardar para Illustrator
-ggsave(pathLocalResults("HE clas Results/Figure_suppl_forest_comparativo_til_final.pdf"), grafico_til, width = 18, height = 9, units = "cm", device = "pdf")
+ggsave(pathLocalResults("HE clas Results/FigureS1b_forest_comparativo_til_pam50_age.pdf"), grafico_til, width = 18, height = 9, units = "cm", device = "pdf")
 
 
 ## Obtener tabla para comparar modelos
-
 get_cox_summary <- function(model, model_name = "Model") {
   coefs <- summary(model)$coefficients
   confs <- summary(model)$conf.int
@@ -1280,30 +1298,23 @@ get_cox_summary <- function(model, model_name = "Model") {
 }
 
 
-Model_1_df <- get_cox_summary(resultados_cox_til[["MS1"]], "Model 1")
-Model_2_df <- get_cox_summary(resultados_cox_til[["MS2"]], "Model 2")
-Model_3_df <- get_cox_summary(resultados_cox_til[["MS3"]], "Model 3")
-Model_4_df <- get_cox_summary(resultados_cox_til[["MS4"]], "Model 4")
-Model_5_df <- get_cox_summary(resultados_cox_til[["MS5"]], "Model 5")
 Model_6_df <- get_cox_summary(resultados_cox_til[["MS6"]], "Model 6")
+Model_8_df <- get_cox_summary(resultados_cox_til[["MS8"]], "Model 8")
 
 
 # Join by Variable name (use full_join to preserve all rows)
-library(dplyr)
+#library(dplyr)
 
-summary_combined <- Model_1_df %>%
-  full_join(Model_2_df, by = "Variable") %>%
-  full_join(Model_3_df, by = "Variable") %>%
-  full_join(Model_4_df, by = "Variable")  %>%
-  full_join(Model_5_df, by = "Variable")
+summary_combined <- Model_6_df %>%
+  full_join(Model_8_df, by = "Variable")
 
 
+write.xlsx(summary_combined, file = pathLocalResults("HE clas Results/Multivariable_TIL_models_summary_results.xlsx"))
 
 #### Multivariable Cox for HE clas ====
 
 # Ver cuántos NAs hay por cada columna
 colSums(is.na(clinical[, c("HE_clas", "tumor_size", "node_status", "age_group", "PAM50_Subtype", "stage")]))
-
 
 modelos <- list(
   M1 = surv_obj ~ HE_clas + age_group + tumor_size + node_status,
@@ -1316,9 +1327,8 @@ modelos <- list(
 # 1. Ejecutar los modelos
 resultados_cox <- lapply(modelos, function(f) coxph(f, data = clinical))
 
-# install.packages("broom")
-library(broom)
-library(dplyr)
+#library(broom)
+#library(dplyr)
 
 # 2. Evaluación del Supuesto de Proporcionalidad (Schoenfeld)
 # Guardamos los tests en una lista para revisarlos uno a uno
@@ -1344,7 +1354,7 @@ for (nombre in names(schoenfeld_tests)) {
 #Ninguno viola el supuesto ni global ni para cada variable!!!
 
 # 3. Evaluación de Multicolinealidad (VIF)
-library(car)
+#library(car)
 vif_resultados <- lapply(resultados_cox, function(m) {
   # Intentamos calcular VIF, capturando el error si la estratificación da problemas
   tryCatch(vif(m), error = function(e) return("Error en cálculo de VIF o Inf detectado"))
@@ -1355,8 +1365,20 @@ cat("\n--- Resultados de VIF por Modelo ---\n")
 print(vif_resultados)
 
 
+## Obtener AIC y C index para cada modelo
+performance_table <- imap_dfr(resultados_cox, function(model, model_name) {
+  tibble(
+    Model   = model_name,
+    AIC     = round(AIC(model), 2),
+    C_index = round(model[["concordance"]][["concordance"]], 3)
+  )
+})
+
+# Ver el resultado
+print(performance_table)
+
 # 4. Grafico de forest plot
-library(forestmodel)
+#library(forestmodel)
 forest_model(resultados_cox[["M1"]])
 forest_model(resultados_cox[["M2"]])
 forest_model(resultados_cox[["M3"]])
@@ -1364,9 +1386,9 @@ forest_model(resultados_cox[["M4"]])
 forest_model(resultados_cox[["M5"]])
 
 # 1. Unificar todos los modelos en un solo dataframe
-library(dplyr)
-library(ggplot2)
-library(broom)
+#library(dplyr)
+#library(ggplot2)
+#library(broom)
 
 # 1. Extraer resultados y añadir las FILAS DE REFERENCIA manualmente
 extraer_con_ref <- function(modelo, nombre) {
@@ -1488,7 +1510,7 @@ Model_5_df <- get_cox_summary(resultados_cox[["M5"]], "Model 5")
 
 
 # Join by Variable name (use full_join to preserve all rows)
-library(dplyr)
+#library(dplyr)
 
 summary_combined <- Model_1_df %>%
   full_join(Model_2_df, by = "Variable") %>%
@@ -1498,13 +1520,27 @@ summary_combined <- Model_1_df %>%
 
 
 write.csv(summary_combined, pathLocalResults("HE clas Results/multivariable_cox_models_age_table_without_prior_treatment.csv"), row.names = FALSE)
-library(openxlsx)
+#library(openxlsx)
 write.xlsx(summary_combined, pathLocalResults("HE clas Results/multivariable_cox_models_age_table_excel_without_prior_treatment.xlsx"), rowNames = FALSE)
 
 
+## Obtener AIC y C index para cada modelo
+performance_table <- imap_dfr(resultados_cox, function(model, model_name) {
+  tibble(
+    Model   = model_name,
+    AIC     = round(AIC(model), 2),
+    C_index = round(model[["concordance"]][["concordance"]], 3)
+  )
+})
+
+# Ver el resultado
+print(performance_table)
+
+
+
 ## Obtener p adj values para HE clas low-> esto permite confirmar que esta clasificacion es estable para todos los modelos
-library(dplyr)
-library(tidyr)
+# library(dplyr)
+# library(tidyr)
 
 # 1. Identificar las columnas que contienen p-valores
 columnas_p <- grep("^P_Model", names(summary_combined), value = TRUE)
@@ -1552,8 +1588,8 @@ modelos <- list(
 resultados_cox <- lapply(modelos, function(f) coxph(f, data = clinical))
 resultados_cox
 # install.packages("broom")
-library(broom)
-library(dplyr)
+# library(broom)
+# library(dplyr)
 
 # 2. Evaluación del Supuesto de Proporcionalidad (Schoenfeld)
 # Guardamos los tests en una lista para revisarlos uno a uno
@@ -1578,7 +1614,7 @@ for (nombre in names(schoenfeld_tests)) {
 
 
 # 3. Evaluación de Multicolinealidad (VIF)
-library(car)
+#library(car)
 vif_resultados <- lapply(resultados_cox, function(m) {
   # Intentamos calcular VIF, capturando el error si la estratificación da problemas
   tryCatch(vif(m), error = function(e) return("Error en cálculo de VIF o Inf detectado"))
@@ -1590,7 +1626,7 @@ print(vif_resultados)
 
 
 # 4. Grafico de forest plot
-library(forestmodel)
+#library(forestmodel)
 pam50_stage <- forest_model(resultados_cox[["M3"]])
 pam50_stage
 
@@ -1627,7 +1663,7 @@ Model_3_df <- get_cox_summary(resultados_cox[["M3"]], "Model 3")
 
 
 # Join by Variable name (use full_join to preserve all rows)
-library(dplyr)
+#library(dplyr)
 
 summary_combined <- Model_1_df %>%
   full_join(Model_2_df, by = "Variable") %>%
@@ -1635,47 +1671,10 @@ summary_combined <- Model_1_df %>%
 summary_combined
 
 write.csv(summary_combined, pathLocalResults("HE clas Results/multivariable_cox_models_PAM50_table_without_prior_treatment.csv"), row.names = FALSE)
-library(openxlsx)
+#library(openxlsx)
 write.xlsx(summary_combined, pathLocalResults("HE clas Results/multivariable_cox_models_PAM50_table_excel_without_prior_treatment.xlsx"), rowNames = FALSE)
 
 
-
-
-
-
-
-
-
-################################################################################
-### TIL percentage between lumA and LumB ====
-
-# Perform Normality test for total_perMB 
-perform_normality_tests(clinical, "til_percentage", "PAM50_Subtype")
-
-## Wilcoxon test compare TMB between Treg groups
-wilcox_tmb_result <- wilcoxon_test_function(clinical, "til_percentage", "PAM50_Subtype", "LumA")
-wilcox_tmb_result 
-
-# Plot results TMB between high and low immune groups by violin plot
-annotations <- list(
-  list(x = 1.5, y = 2, stars = 1, variable = colnames(clinical)[122]) #122 es til percentage
-)
-create_grouped_boxplot(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                       group = "PAM50_Subtype",
-                       column_names = "til_percentage",
-                       y_limit = 2.5,
-                       annotations = annotations,
-                       y_text = "TIL percentage")
-
-annotations <- list(
-  list(x = 1.5, y = 8, stars = 1, variable = colnames(clinical)[122]) #122 es til percentage
-)
-create_grouped_violin_plot(data = clinical, #a data frame with in columns should be "group_variable" and each "variable" to be plotted, in rows: samples
-                       group = "PAM50_Subtype",
-                       column_names = "til_percentage",
-                       y_limit =8,
-                       annotations = annotations,
-                       y_text = "TIL percentage")
 
 ################################################################################
 ### MUTATION ANALYSIS ====
@@ -1705,17 +1704,31 @@ clinical_tmb <- merge(clinical, tmb_patients, by = "patient")
 
 # Perform Normality test for total_perMB 
 clinical_tmb <- clinical_tmb[clinical_tmb$total_perMB!=0,]
-perform_normality_tests(clinical_tmb, "total_perMB", "HE_clas")
+perform_residual_normality_tests(clinical_tmb, "total_perMB", "HE_clas")
 
 ## Wilcoxon test compare TMB between Treg groups
 wilcox_tmb_result <- wilcoxon_test_function(clinical_tmb, "total_perMB", "HE_clas", "low")
 wilcox_tmb_result 
 
+
+# $test
+# 
 # Wilcoxon rank sum test with continuity correction
 # 
 # data:  condition_true and condition_false
-# W = 41027, p-value = 0.03353
+# W = 39378, p-value = 0.03369
 # alternative hypothesis: true location shift is not equal to 0
+# 
+# 
+# $effect_size
+# W 
+# 0.1008779 
+# 
+# $n1
+# [1] 291
+# 
+# $n2
+# [1] 301
 
 # Plot results TMB between high and low immune groups by violin plot
 annotations <- list(
@@ -1727,7 +1740,7 @@ create_grouped_boxplot(data = clinical_tmb, #a data frame with in columns should
                        y_limit = 2.5,
                        annotations = annotations,
                        y_text = "TMB per Mb")
-library(ggplot2)
+#library(ggplot2)
 
 p <- ggplot(clinical_tmb, aes(x = HE_clas, y = total_perMB, fill = HE_clas)) +
   geom_boxplot(
@@ -1755,20 +1768,6 @@ p <- ggplot(clinical_tmb, aes(x = HE_clas, y = total_perMB, fill = HE_clas)) +
   )
 
 p
-
-
-## Univariable Cox for TMB 
-censored_time <- pmin(clinical_tmb$overall_survival, 3650)
-event_indicator <- clinical_tmb$vital_status_binary & (clinical_tmb$overall_survival <= 3650)
-
-#creamos un objeto "surv" con la funci?n Surv()
-surv_obj <- Surv(censored_time,
-                 event_indicator)
-
-
-formula <- as.formula(paste("surv_obj ~", "total_perMB"))
-univ_tmb_cox <- coxph(formula, data = clinical_tmb)
-univ_tmb_cox # No da significativo
 
 
 #####################################################################
@@ -1847,32 +1846,53 @@ clinical[cols] <- lapply(clinical[cols], function(x) {
 ## Análsisis estadisticos
 
 #### Til_percentage between mutated and wt ====
-# Perform Normality test 
-perform_normality_tests <- function(df, outcome, col) {
+# Perform Normality test on residuals
+perform_residual_normality_tests <- function(df, outcome, col) {
   
+  # 1. Filtrar datos y quitar filas con valores faltantes (NA)
   sub <- df[, c(outcome, col)]
   sub <- sub[!is.na(sub[[col]]) & !is.na(sub[[outcome]]), ]
   
+  # Asegurar que la columna del gen tenga los grupos esperados
   wt_vals  <- sub[sub[[col]] == "wt", outcome]
   mut_vals <- sub[sub[[col]] == "mutated", outcome]
   
+  # Calcular el total de observaciones v?lidas para el modelo
+  n_total <- length(wt_vals) + length(mut_vals)
+  
+  # Inicializar el p-valor como NA
+  shapiro_residuals_p <- NA
+  
+  # 2. El test de Shapiro requiere entre 3 y 5000 observaciones en total
+  if (n_total >= 3 && n_total <= 5000 && length(wt_vals) > 0 && length(mut_vals) > 0) {
+    
+    # Crear la f?rmula din?mica: til_percentage ~ gen
+    formula_str <- as.formula(paste(outcome, "~", col))
+    
+    # Ajustar el modelo lineal y extraer residuos
+    model <- lm(formula_str, data = sub)
+    residuos <- residuals(model)
+    
+    # Aplicar el test de Shapiro-Wilk a los residuos combinados
+    shapiro_residuals_p <- shapiro.test(residuos)$p.value
+  }
+  
+  # 3. Estructurar el resultado (ahora devuelve un ?nico p-valor de residuos)
   res <- list(
     gene = col,
     n_wt = length(wt_vals),
     n_mut = length(mut_vals),
-    shapiro_wt = if (length(wt_vals) >= 3 && length(wt_vals) <= 5000)
-      shapiro.test(wt_vals)$p.value else NA,
-    shapiro_mut = if (length(mut_vals) >= 3 && length(mut_vals) <= 5000)
-      shapiro.test(mut_vals)$p.value else NA
+    shapiro_residuals = shapiro_residuals_p
   )
   
   return(as.data.frame(res))
 }
-
-results <- do.call(rbind, lapply(top20_genes, function(i) {
-  perform_normality_tests(clinical, "til_percentage", i)
+results_residuals <- do.call(rbind, lapply(top20_genes, function(i) {
+  perform_residual_normality_tests(clinical, "til_percentage", i)
 }))
-results 
+
+results_residuals 
+
 
 ## Wilcoxon test compare til_percentaje between mutated vs wt for each gene
 ### COPIAR FUNCION AL PRINCIPIO SI ES QUE FUNCIONA OK
@@ -1963,8 +1983,8 @@ dif_genes <- rownames(subset(result_table, P_Value <= 0.05))
 write.csv2(results_table, file=pathLocalResults("HE clas Results/Wilcoxon test of til percentages between wt and mutated genes without prior treatment.csv"), row.names = FALSE)
 
 #Plot
-library(ggplot2)
-library(dplyr)
+# library(ggplot2)
+# library(dplyr)
 
 # Create a long-format data frame for plotting
 plot_data <- clinical %>%
@@ -2077,8 +2097,8 @@ results_sign <- subset(results, p_value <= 0.05)
 
 # Plot
 
-library(ggplot2)
-library(ggrepel)
+# library(ggplot2)
+# library(ggrepel)
 
 mutation_frequency_plot <- ggplot(
   results, aes(x = Score_Low * 100, y = Score_High * 100, label = Gene)) +
@@ -2157,120 +2177,6 @@ write.csv2(results, file =pathLocalResults("Chi-squared_results between mutated 
 # coBarplot(m1 = MAF_high, m2 = MAF_low, m1Name = 'High', m2Name = 'Low', genes = genes)
 
 
-####  Cox for each mutated gene ====
-### Survival Object 
-
-censored_time <- pmin(clinical$overall_survival, 3650)
-event_indicator <- clinical$vital_status_binary & (clinical$overall_survival <= 3650)
-
-#creamos un objeto "surv" con la funcion Surv()
-surv_obj <- Surv(clinical$censored_time,
-                 clinical$event_indicator)
-
-#Obtain pvalue and coefficient for each cell 
-
-mutated_symbols <- c("PIK3CA","CDH1","TTN","GATA3","TP53","MUC16","KMT2C", "MAP3K1","MAP2K4","MUC4","RUNX1","MUC5B","NEB","NCOR1","ARID1A","FLG","RYR2","HMCN1","USH2A", "ERBB2")
-
-mutated_symbols <- top20_genes
-
-univ_gene_results <- list()
-for (col in mutated_symbols) {
-  formula <- as.formula(paste("surv_obj ~", col))
-  univ_cox <- coxph(formula, data = clinical)
-  summary_univ_cox <- summary(univ_cox)
-  p_value <- summary_univ_cox[["logtest"]][["pvalue"]]
-  CI <- summary_univ_cox$conf.int[, c("lower .95", "upper .95")]
-  HR <- summary_univ_cox$coefficients[1, "exp(coef)"]
-  univ_gene_results[[col]] <- list(p_value = p_value, HR = HR, CI=CI)
-}
-
-
-# Convert the list to a data frame
-cox_results_df <- do.call(rbind, lapply(names(univ_gene_results), function(col) {
-  c(Gene = col, 
-    P_Value = univ_gene_results[[col]]$p_value, 
-    HR = univ_gene_results[[col]]$HR,
-    CI_low = univ_gene_results[[col]][["CI"]][["lower .95"]],
-    CI_upp = univ_gene_results[[col]][["CI"]][["upper .95"]])
-}))
-
-# Convert columns to appropriate types
-cox_results_df <- data.frame(cox_results_df, stringsAsFactors = FALSE)
-cox_results_df$P_Value <- as.numeric(cox_results_df$P_Value)
-cox_results_df$HR <- as.numeric(cox_results_df$HR)
-cox_results_df$CI_low <- as.numeric(cox_results_df$CI_low)
-cox_results_df$CI_upp <- as.numeric(cox_results_df$CI_upp)
-
-# Sort the data frame by P_Value
-cox_results_df <- cox_results_df[order(cox_results_df$P_Value), ]
-
-# Print the sorted results
-print(cox_results_df)
-
-
-# > print(cox_results_df)
-#      Gene    P_Value        HR    CI_low     CI_upp
-# 7   KMT2C 0.01388109 0.4546391 0.2559826  0.8074638
-# 12  MUC5B 0.04871755 0.3480577 0.1403852  0.8629410
-# 2    CDH1 0.06287353 1.9512986 0.9002415  4.2294942
-# 13    NEB 0.08159456 3.9390048 0.5481765 28.3043109
-# 5    TP53 0.17025070 0.6847209 0.4064577  1.1534847
-# 18  HMCN1 0.22420205 2.7815412 0.3869061 19.9970284
-# 15 ARID1A 0.30324294 1.9360828 0.4760052  7.8747395
-# 17   RYR2 0.49883819 1.4548366 0.4594242  4.6069613
-# 19  USH2A 0.53700221 0.7169448 0.2621887  1.9604573
-# 1  PIK3CA 0.54587059 0.8715557 0.5594776  1.3577117
-# 14  NCOR1 0.62892413 1.2697008 0.4650625  3.4665022
-# 11  RUNX1 0.63224262 1.2669735 0.4639300  3.4600522
-# 16    FLG 0.63469500 0.7971327 0.3224296  1.9707266
-# 9  MAP2K4 0.65198488 1.2504545 0.4577803  3.4156914
-# 6   MUC16 0.73902729 1.1229014 0.5619000  2.2440071
-# 8  MAP3K1 0.77620274 0.8921538 0.4112192  1.9355572
-# 10   MUC4 0.87186947 0.9080878 0.2862372  2.8809091
-# 4   GATA3 0.96364580 1.0134399 0.5703065  1.8008920
-# 3     TTN 0.97239438 0.9896092 0.5480886  1.7868031
-
-library(coxphf)
-clinical$censored_time <- pmin(clinical$overall_survival, 3650)
-clinical$event_indicator <- clinical$vital_status_binary & (clinical$overall_survival <= 3650)
-
-
-genes_to_test <- c("FBN3", "RYR1", "TP53")
-penalized_results <- list()
-
-for (gene in genes_to_test) {
-  # Filtrar datos sin NA
-  model_data <- clinical[, c("censored_time", "event_indicator", gene)]
-  model_data <- na.omit(model_data)
-  
-  # Agregar columna 'surv_obj' dentro del dataframe para que coxphf la reconozca
-  model_data$surv_obj <- with(model_data, Surv(censored_time, event_indicator))
-  
-  # Ajustar modelo penalizado
-  formula <- as.formula(paste("surv_obj ~", gene))
-  
-  fit <- coxphf(formula, data = model_data)
-  summary_fit <- summary(fit)
-  
-  penalized_results[[gene]] <- list(
-    HR = summary_fit$coefficients["exp(coef)"],
-    CI = c(summary_fit$conf.int["lower .95"], summary_fit$conf.int["upper .95"]),
-    p_value = summary_fit$prob
-  )
-}
-
-
-surv_obj <- Surv(clinical$censored_time,
-                 clinical$event_indicator)
-
-cox_fit <- coxph(Surv(censored_time, event_indicator) ~ TP53, data = clinical)
-summary_cox <- summary(cox_fit)
-summary_cox 
-
-#Guardar usando write.csv2() (usa ; como separador de columnas y , como decimal)
-#sto es ideal para abrir en Excel con configuración regional latinoamericana o europea:
-write.csv2(cox_results_df, file =pathLocalResults("Cox results for each mutated genes.csv"), row.names = FALSE)
-
 
 ## Multivariado incorporando mutaciones
 for (i in mutated_symbols) {
@@ -2299,8 +2205,8 @@ modelos <- list(
 resultados_cox <- lapply(modelos, function(f) coxph(f, data = clinical))
 
 # install.packages("broom")
-library(broom)
-library(dplyr)
+# library(broom)
+# library(dplyr)
 
 # 2. Evaluación del Supuesto de Proporcionalidad (Schoenfeld)
 # Guardamos los tests en una lista para revisarlos uno a uno
@@ -2325,7 +2231,7 @@ for (nombre in names(schoenfeld_tests)) {
 
 
 # 3. Evaluación de Multicolinealidad (VIF)
-library(car)
+#library(car)
 vif_resultados <- lapply(resultados_cox, function(m) {
   # Intentamos calcular VIF, capturando el error si la estratificación da problemas
   tryCatch(vif(m), error = function(e) return("Error en cálculo de VIF o Inf detectado"))
@@ -2336,9 +2242,9 @@ cat("\n--- Resultados de VIF por Modelo ---\n")
 print(vif_resultados)
 
 # 1. Unificar todos los modelos en un solo dataframe
-library(dplyr)
-library(ggplot2)
-library(broom)
+# library(dplyr)
+# library(ggplot2)
+# library(broom)
 
 # 1. Extraer resultados y añadir las FILAS DE REFERENCIA manualmente
 extraer_con_ref <- function(modelo, nombre) {
@@ -2462,7 +2368,7 @@ Model_9_df <- get_cox_summary(resultados_cox[["M9"]], "Model 9")
 
 
 # Join by Variable name (use full_join to preserve all rows)
-library(dplyr)
+#library(dplyr)
 
 summary_combined <- Model_6_df %>%
   full_join(Model_7_df, by = "Variable") %>%
@@ -2471,13 +2377,13 @@ summary_combined <- Model_6_df %>%
 
 
 write.csv(summary_combined, pathLocalResults("HE clas Results/multivariable_cox_models_TP53_table_without_prior_treatment.csv"), row.names = FALSE)
-library(openxlsx)
+#library(openxlsx)
 write.xlsx(summary_combined, pathLocalResults("HE clas Results/multivariable_cox_models_TP53_table_excel_without_prior_treatment.xlsx"), rowNames = FALSE)
 
 
 ## Obtener p adj values pra HE clas low-> esto permite confirmar que esta clasificacion es estable para todos los modelos
-library(dplyr)
-library(tidyr)
+# library(dplyr)
+# library(tidyr)
 
 # 1. Identificar las columnas que contienen p-valores
 columnas_p <- grep("^P_Model", names(summary_combined), value = TRUE)
@@ -2512,8 +2418,8 @@ summary_final %>%
 
 
 ########################################################################
-### IMMUNE CELLS from HE comparison between HE immune clas ====
-library(readxl)
+## IMMUNE CELLS from HE comparison between HE immune clas ====
+#library(readxl)
 immune_cell_HE <- read_excel(pathLocalDb("immune_cell_HE.xlsx"))
 colnames(immune_cell_HE)
 columns <- c("ParticipantBarcode","Leukocyte Fraction","Lymphocytes","Neutrophils","Eosinophils","Mast Cells",              
@@ -2532,7 +2438,7 @@ colnames(immune_cell_HE)[colnames(immune_cell_HE) == "Macrophages"] <- "Macropha
 colnames(immune_cell_HE)[colnames(immune_cell_HE) == "Leukocyte Fraction"] <- "Leukocyte_Fraction_HE"
 colnames(immune_cell_HE)[colnames(immune_cell_HE) == "Immune Subtype"] <- "Immune_Subtype_HE"
 
-library(dplyr)
+#library(dplyr)
 clinical <- clinical %>%
   left_join(immune_cell_HE, by = "patient")
 
@@ -2551,6 +2457,12 @@ for (col_name in columns_to_convert){
 }
 
 #Comparison of HE cells proportions between HE clas
+normality_results_cells <- perform_residual_normality_tests(
+  data_frame = clinical, 
+  columns = columns_to_convert, 
+  group_column = "HE_clas"
+)
+normality_results_cells
 
 HE_cell_wilcox_result <- list()
 
@@ -2668,7 +2580,7 @@ cor_quanti_Mo
 clinical$estimated_macrophages <- rowSums(clinical[, c("Macrophage_M1", "Macrophage_M2")], na.rm = TRUE) / 
   (1 - clinical[, "uncharacterized_cell"])
 # Plot with linear trend line
-library(ggpubr)
+#library(ggpubr)
 ggplot(clinical, aes(x = estimated_macrophages, y = Macrophages_HE)) +
   geom_point(alpha = 0.6, color = "#66C2A5") +
   geom_smooth(method = "lm", se = TRUE, color = "black", linetype = "dashed") +
@@ -2685,12 +2597,12 @@ hist(clinical$Lymphocytes_HE)
 hist(rowSums(clinical[,c("B_cell","T_cell_CD4_non_regulatory","T_cell_CD8","T_cell_regulatory_Tregs", "NK_cell")])/(1-(clinical[,"uncharacterized_cell"])))
 cor_quanti_Lym <-cor.test(rowSums(clinical[,c("B_cell","T_cell_CD4_non_regulatory","T_cell_CD8","T_cell_regulatory_Tregs", "NK_cell")])/(1-(clinical[,"uncharacterized_cell"])), clinical[,"Lymphocytes_HE"])
 
-library(ggplot2)
+#library(ggplot2)
 # Calculate the normalized lymphocyte-like proportion
 clinical$estimated_lymphocytes <- rowSums(clinical[, c("B_cell", "T_cell_CD4_non_regulatory", "T_cell_CD8", "T_cell_regulatory_Tregs", "NK_cell")], na.rm = TRUE) / 
   (1 - clinical[, "uncharacterized_cell"])
 # Plot with linear trend line
-library(ggpubr)
+#library(ggpubr)
 ggplot(clinical, aes(x = estimated_lymphocytes, y = Lymphocytes_HE)) +
   geom_point(alpha = 0.6, color = "#66C2A5") +
   geom_smooth(method = "lm", se = TRUE, color = "black", linetype = "dashed") +
@@ -2707,7 +2619,7 @@ ggplot(clinical, aes(x = estimated_lymphocytes, y = Lymphocytes_HE)) +
 clinical$estimated_DC <- clinical[, c("Myeloid_dendritic_cell")] / 
   (1 - clinical[, "uncharacterized_cell"])
 # Plot with linear trend line
-library(ggpubr)
+#library(ggpubr)
 ggplot(clinical, aes(x = estimated_DC, y = Dendritic_Cells_HE)) +
   geom_point(alpha = 0.6, color = "#66C2A5") +
   geom_smooth(method = "lm", se = TRUE, color = "black", linetype = "dashed") +
@@ -2788,16 +2700,21 @@ for (col_name in Lymphocytes_columns) {
 cell_types <- names(Normalized_Lymphocytes_wilcox_result)
 p_values <- sapply(Normalized_Lymphocytes_wilcox_result, function(x) x[["test"]][["p.value"]])
 test_statistics <- sapply(Normalized_Lymphocytes_wilcox_result, function(x) x[["test"]][["statistic"]])
+size_effect <- sapply(Normalized_Lymphocytes_wilcox_result, function(x) x[["effect_size"]][["W"]])
 
 Normalized_Lymphocytes_results_table <- data.frame(
   cell_type = cell_types,
   p_value = p_values,
-  test_statistic = test_statistics
+  test_statistic = test_statistics,
+  effect_size = size_effect
 )
 
 Normalized_Lymphocytes_results_table$Significance <- ifelse(Normalized_Lymphocytes_results_table$p_value < 0.05, "*", "")
 Normalized_Lymphocytes_results_table <- Normalized_Lymphocytes_results_table[order(Normalized_Lymphocytes_results_table$p_value), ]
+
+Normalized_Lymphocytes_results_table$Adj_P_Value <- p.adjust(Normalized_Lymphocytes_results_table$p_value, method = "BH")
 Normalized_Lymphocytes_results_table
+
 
 
 annotations <- list(
@@ -2836,6 +2753,33 @@ quantiseq_violin_plot <- create_grouped_violin_plot(data = clinical,
 ggsave(pathLocalResults("HE clas Results/Figure_3c_quantiseq_violin_4cols_without_treatment.pdf"), quantiseq_violin_plot, width = 18, height = 9, units = "cm", device = "pdf")
 
 
+immune_cell_columns <- c("estimated_Bcells", "estimated_TCD4", "estimated_TCD8", "estimated_Tregs", "estimated_NK", "estimated_M1", "estimated_M2")
+Normalized_cells_wilcox_result <- list()
+
+for (col_name in immune_cell_columns) {
+  result <- wilcoxon_test_function(clinical, col_name, "HE_clas", "low")
+  Normalized_cells_wilcox_result[[col_name]] <- result
+  print(Normalized_cells_wilcox_result) 
+}
+
+cell_types <- names(Normalized_cells_wilcox_result)
+p_values <- sapply(Normalized_cells_wilcox_result, function(x) x[["test"]][["p.value"]])
+test_statistics <- sapply(Normalized_cells_wilcox_result, function(x) x[["test"]][["statistic"]])
+size_effect <- sapply(Normalized_cells_wilcox_result, function(x) x[["effect_size"]][["W"]])
+
+Normalized_cells_results_table <- data.frame(
+  cell_type = cell_types,
+  p_value = p_values,
+  test_statistic = test_statistics,
+  effect_size = size_effect
+)
+
+Normalized_cells_results_table$Significance <- ifelse(Normalized_cells_results_table$p_value < 0.05, "*", "")
+Normalized_cells_results_table<- Normalized_cells_results_table[order(Normalized_cells_results_table$p_value), ]
+
+Normalized_cells_results_table$Adj_P_Value <- p.adjust(Normalized_cells_results_table$p_value, method = "BH")
+Normalized_cells_results_table
+
 ##### Comparisons of Quantiseq ratios between HE clas ====
 # TCD8 to Treg
 clinical$TCD8_Treg <- clinical$T_cell_CD8 / clinical$T_cell_regulatory_Tregs
@@ -2847,7 +2791,7 @@ Lymphocytes_columns <- c("TCD8_Treg", "TCD8_TCD4")
 Normalized_Lymphocytes_ratios_wilcox_result <- list()
 
 for (col_name in Lymphocytes_columns) {
-  result <- wilcoxon_test_function(clinical, col_name, "HE_clas", "high")
+  result <- wilcoxon_test_function(clinical, col_name, "HE_clas", "low")
   Normalized_Lymphocytes_ratios_wilcox_result[[col_name]] <- result
   print(Normalized_Lymphocytes_ratios_wilcox_result) 
 }
@@ -2866,8 +2810,9 @@ Normalized_Lymphocytes_ratios_results_table <- data.frame(
 
 Normalized_Lymphocytes_ratios_results_table$Significance <- ifelse(Normalized_Lymphocytes_ratios_results_table$p_value < 0.05, "*", "")
 Normalized_Lymphocytes_ratios_results_table <- Normalized_Lymphocytes_ratios_results_table[order(Normalized_Lymphocytes_ratios_results_table$p_value), ]
+Normalized_Lymphocytes_ratios_results_table$Adj_P_Value <- p.adjust(Normalized_Lymphocytes_ratios_results_table$p_value, method = "BH")
 Normalized_Lymphocytes_ratios_results_table
-
+  
 
 annotations <- list(
   list(x = 1.5, y = 0.4, stars = 1, variable = c("TCD8_Treg", "TCD8_TCD4"))
@@ -2890,10 +2835,161 @@ create_grouped_violin_plot(data = clinical, #a data frame with in columns should
 ggsave(pathLocalResults("HE clas Results/Figure_3b_T_ratio_without_treatment.pdf"), T_ratio_plot, width = 9, height = 9, units = "cm", device = "pdf")
 
 
+#### Plot immune cell proportions as volcano
+#Plot in volcano plot
+# library(ggplot2)
+# library(ggrepel) # Ensures text labels do not overlap
 
-######################################################
+# 1. Prepare data (Add a column specifically for plot coloring/logic)
+df_plot <- rbind(Normalized_cells_results_table, Normalized_Lymphocytes_ratios_results_table) 
 
-#### Cox univariado para cada subtipo celular HE ====
+# Create a clean status variable based on adjusted p-value threshold (0.05)
+df_plot$Status <- ifelse(df_plot$Adj_P_Value < 0.05, "Significant", "Not Significant")
+
+# 2. Generate the Volcano Plot
+volcano_cells <- ggplot(df_plot, aes(x = effect_size, y = -log10(Adj_P_Value))) +
+  
+  # Add horizontal threshold line for significance (FDR = 0.05 -> -log10 is ~1.3)
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "gray50", alpha = 0.7) +
+  
+  # Add vertical line at 0 (No effect reference)
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50", alpha = 0.7) +
+  
+  # Plot the data points
+  geom_point(aes(color = Status), size = 3.5, alpha = 0.8) +
+  
+  # Intelligent text labels (only labels significant points to keep it clean)
+  geom_text_repel(
+    data = df_plot,  #subset(df_plot, Adj_P_Value < 0.05),
+    aes(label = cell_type),
+    size = 3,
+    box.padding = 0.5,
+    point.padding = 0.3,
+    max.overlaps = Inf,
+    fontface = "bold"
+  ) +
+  
+  # Customize colors (Red for significant changes, Dark Gray for non-significant)
+  scale_color_manual(values = c("Significant" = "#E41A1C", "Not Significant" = "#999999")) +
+  
+  # Clean, minimalist journal theme
+  theme_minimal(base_size = 10) +
+  theme(
+    panel.grid.minor = element_blank(),
+    legend.position = "top",
+    axis.title = element_text(face = "bold"),
+    plot.title = element_text(face = "bold", hjust = 0.5)
+  ) +
+  
+  # Dynamic Axis Labels
+  labs(
+    x = "Effect Size (r)",
+    y = expression(-log[10] * "(Adjusted P-Value)"),
+    color = "Statistical Status"
+  )
+
+ggsave(pathLocalResults("HE clas Results/Figure_3_volcano_cells.pdf"), volcano_cells , width = 9, height = 9, units = "cm", device = "pdf")
+
+
+### Correlation for TIL_percentage and immune cells ====
+immune_cols_corr <- c("til_percentage", "Lymphocytes_HE","Neutrophils_HE","Eosinophils_HE","Mast_Cells_HE",              
+                             "Dendritic_Cells_HE","Macrophages_HE", "B_cell", "NK_cell","T_cell_CD4_non_regulatory","T_cell_CD8","T_cell_regulatory_Tregs",
+                             "Macrophage_M1","Macrophage_M2", "Monocyte","Neutrophil","Myeloid_dendritic_cell")
+
+# Load required libraries
+# library(dplyr)
+# library(tidyr)
+# library(purrr)
+# library(ggplot2)
+
+
+# --- STEP 1: Shapiro-Wilk Test for Normality ---
+# Run Shapiro test on all columns and determine if they are normally distributed (p >= 0.05)
+normality_results <- map_df(immune_cols_corr, function(col) {
+  p_val <- shapiro.test(clinical[[col]])$p.value
+  tibble(variable = col, shapiro_p = p_val, is_normal = p_val >= 0.05)
+})
+
+# Check if the baseline variable (til_percentage) is normal
+is_til_normal <- normality_results %>% 
+  filter(variable == "til_percentage") %>% 
+  pull(is_normal)
+
+# Elements to compare against til_percentage
+compare_cols <- setdiff(immune_cols_corr, "til_percentage")
+
+
+# --- STEP 2 & 3: Run Decision-Based Correlations ---
+correlation_results <- map_df(compare_cols, function(col) {
+  is_col_normal <- normality_results %>% 
+    filter(variable == col) %>% 
+    pull(is_normal)
+  
+  # Decision Rule: Both must be normal for Pearson; otherwise, Spearman
+  method <- if (is_til_normal && is_col_normal) "pearson" else "spearman"
+  
+  # Run correlation test
+  ct <- cor.test(clinical$til_percentage, clinical[[col]], 
+                 method = method, exact = FALSE)
+  
+  # Extract values safely
+  # Note: base R's cor.test() does not natively calculate CIs for Spearman
+  ci_lower <- if (!is.null(ct$conf.int)) ct$conf.int[1] else NA
+  ci_upper <- if (!is.null(ct$conf.int)) ct$conf.int[2] else NA
+  
+  tibble(
+    variable = col,
+    method = method,
+    estimate = ct$estimate,
+    p_value = ct$p.value,
+    ci_lower = ci_lower,
+    ci_upper = ci_upper
+  )
+})
+
+
+# --- STEP 4: Adjust P-Values (Benjamini-Hochberg) ---
+correlation_results <- correlation_results %>%
+  mutate(adj_p_value = p.adjust(p_value, method = "BH"))
+
+
+# --- STEP 5: Report Results ---
+print("--- Correlation Analysis Report ---")
+print(correlation_results)
+
+
+# --- STEP 6: Plot Results Using facet_wrap ---
+# Pivot data to long format for ggplot2 faceting
+plot_data <- clinical %>%
+  select(til_percentage, all_of(compare_cols)) %>%
+  pivot_longer(cols = -til_percentage, names_to = "cell_type", values_to = "value") %>%
+  # Merge correlation stats to dynamic label generation
+  left_join(correlation_results, by = c("cell_type" = "variable")) %>%
+  mutate(stat_label = sprintf("%s\nr/rho = %.2f\np.adj = %.3f", method, estimate, adj_p_value))
+
+# Generate the faceted scatter plot
+ggplot(plot_data, aes(x = value, y = til_percentage)) +
+  geom_point(alpha = 0.5, color = "steelblue") +
+  geom_smooth(method = "lm", color = "coral", se = TRUE, lwd = 0.8) +
+  facet_wrap(~ cell_type, scales = "free_x") +
+  # Add statistical annotation text inside each plot facet
+  geom_text(data = distinct(plot_data, cell_type, .keep_all = TRUE),
+            aes(x = -Inf, y = Inf, label = stat_label),
+            hjust = -0.1, vjust = 1.2, inherit.aes = FALSE, size = 3, fontface = "italic") +
+  theme_minimal() +
+  labs(
+    title = "Correlation of Immune Cell Types with TIL Percentage",
+    subtitle = "Statistical method chosen dynamically via Shapiro-Wilk normality tests",
+    x = "Immune Cell Abundance / Value",
+    y = "TIL Percentage (%)"
+  ) +
+  theme(
+    strip.text = element_text(face = "bold", size = 9),
+    plot.title = element_text(face = "bold", size = 14)
+  )  
+
+
+### Cox univariado para cada subtipo celular HE ====
 surv_obj <- Surv(clinical$censored_time,
                  clinical$event_indicator)
 
@@ -2989,7 +3085,7 @@ ggforest(multi_cox,
 
 
 ################################################################################
-###    DEG ANALYSIS ====
+##    DEG ANALYSIS ====
 
 # Filtro rda para quedarme solo con los pacientes que tengo en clinical (con valores de TIL)
 TCGA_BRCA_LumAB_RNAseq <- TCGA_BRCA_LumAB_RNAseq[, colData(TCGA_BRCA_LumAB_RNAseq)$patient %in% clinical$patient]
@@ -3111,7 +3207,7 @@ names(keyvals.shape)[keyvals.shape == 1] <- 'Non-immune'
 
 
 # Plot without labels
-library(EnhancedVolcano)
+#library(EnhancedVolcano)
 p <- EnhancedVolcano(input,
                 lab = rep("", nrow(input)), # ithermanner is putting rownames(input), but a dash appear inside of the point
                 labSize = 0,                 # hides labels completely
@@ -3129,7 +3225,7 @@ p <- EnhancedVolcano(input,
 )
 
 p
-library(ggplot2)
+#library(ggplot2)
 p + geom_point(
   data = subset(input, immune == "Immune DEG"),
   aes(x = 'log2FoldChange', y = 'pvalueadj'),
@@ -3321,7 +3417,7 @@ volcano_data <- merge(volcano_data, immune_genes, by.x = "symbol", by.y = "symbo
 
 log2cutoff <- 1
 qvaluecutoff <- 0.05
-library(dplyr)
+#library(dplyr)
 input<- mutate(volcano_data, 
                sig = ifelse(volcano_data$pvalueadj< qvaluecutoff & abs(log2FoldChange) > log2cutoff , "DEG", "Not Sig"),
                immune = ifelse(volcano_data$symbol %in% immune_genes$symbol == TRUE 
@@ -3333,7 +3429,7 @@ genes_to_label <- c("ADORA2A", "LAG3", "HAVCR2", "PDCD1", "CD274", "PDCD1LG2", "
                     "TNFRSF9", "TNFSF9", "TNFRSF4", "CD70", "CD27", "CD40", "CD40LG", "LGALS9", "TNFSF18", "CEACAM1", 
                     "CD47", "SIRPA", "DNAM1", "PVR", "CD244", "CD48", "TMIGD2", "HHLA2", "BTN2A1", "CD209", "BTN2A2", 
                     "BTN3A1", "BTNL3", "BTNL9", "CD96", "TDO2", "CD200", "CD200R1","GZMB","HMCN1", "TP53", "MAP3K1", "MKI67")
-library(ggplot2)
+#ibrary(ggplot2)
 # Create the volcano plot with filtered labels
 volc = ggplot(input, aes(x = log2FoldChange, y = -log10(pvalueadj))) + 
   geom_point(aes(col = sig)) + # Points colored by significance
@@ -3538,7 +3634,8 @@ res1_ordered <- res1_ordered %>%
 
 #Importo genes inmunol?gicos
 immune_genes_immport <- read.delim2(pathLocalDb("ImmuneGeneList.txt"), header = TRUE, sep="\t")
-library(readxl)
+
+#library(readxl)
 immune_checkpoint <- read_excel(pathLocalDb("Immune_checkpoint_genes_stimulatory_inhibitory_The_Immune_Landscape_Cancer_listo.xlsx"))
 
 immune_genes_immport$Category <- as.factor(immune_genes_immport$Category)
@@ -3733,9 +3830,9 @@ chemokine_heatmap <- pheatmap(
 # but since pheatmap() returns a grid object, the easiest method is to convert each pheatmap to a grob and then arrange them.
 
 
-library(pheatmap)
-library(gridExtra)
-library(grid)
+# library(pheatmap)
+# library(gridExtra)
+# library(grid)
 
 # 2. Extract the grobs
 g1 <- checkpoint_heatmap[[4]]
@@ -3982,9 +4079,10 @@ high_vs_low_GO_BP <- fgseaMultilevel(
 
 ##  Multipanel Layout
 # Load necessary libraries
-library(patchwork) #Use patchwork (recommended) to layout the plots:
-library(forcats)
-library(RColorBrewer)
+# library(patchwork) #Use patchwork (recommended) to layout the plots:
+# library(forcats)
+# library(RColorBrewer)
+# library(pheatmap)
 
 # Add "collection"  and "category" column to each -> category refers to biological function and it was downloaded from https://pmc.ncbi.nlm.nih.gov/articles/PMC4707969/
 
@@ -4069,3 +4167,196 @@ gobp_plot <- plot_pathways(all_pathways, "GO_BP")
 ggsave("KEGG_bubbleplot.pdf", kegg_plot, width = 9, height = 9, path = out_path)
 ggsave("Hallmark_bubbleplot.pdf", hallmark_plot, width = 9, height = 9, path = out_path)
 ggsave("GO_BP_bubbleplot.pdf", gobp_plot, width = 9, height = 9, path = out_path)
+
+
+#### Estadistica descriptiva tabla general
+clinical_df <- clinical[,c("patient","stage","tumor_size", "node_status","PAM50_Subtype", "paper_BRCA_Pathology","age_at_index",
+                           "til_percentage", "HE_clas","er_status_by_ihc","pr_status_by_ihc", "hr_status","her2_status_ihc_fish_y", 
+                           "age_group", "censored_time","event_indicator")]
+summary(clinical_df)
+
+clinical_df[c("stage", "tumor_size", "node_status", "hr_status")] <- lapply(clinical_df[c("stage", "tumor_size", "node_status", "hr_status")], as.factor)
+clinical_df[clinical_df  == "NA"] <- NA
+
+clinical_df$paper_BRCA_Pathology <- as.factor(as.character(clinical_df$paper_BRCA_Pathology))
+
+# library(gtsummary)
+# library(huxtable)
+
+# Build the descriptive table
+tabla_descriptiva <- clinical_df %>%
+  select(-patient, -censored_time,-event_indicator) %>%                        # Exclude ID column
+  tbl_summary(
+    statistic = list(
+      all_continuous()  ~ "{mean} ({sd}) / {median} [{p25}, {p75}]",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = list(
+      all_continuous()  ~ 2,
+      all_categorical() ~ c(0, 1)
+    ),
+    missing_text = "Missing"
+  ) %>%
+  bold_labels() %>%
+  add_n() %>%                                 # Adds total N per variable
+  modify_caption("**Table 1. Cohort characteristics**")
+
+# Preview in RStudio Viewer
+tabla_descriptiva
+
+# Export to Word
+tabla_descriptiva %>%
+  #as_flex_table() %>%
+  as_hux_xlsx(pathLocalResults("HE clas Results/table_descriptive_cohort.xlsx"))
+
+### Comparison of TIL percentage between diferent levels of clinical factor columns ====
+# library(dplyr)
+# library(purrr)
+# library(tidyr)
+# library(gt)
+
+# Define your 10 clinical factor columns
+clinical_factors <- c("stage", "tumor_size", "node_status", "PAM50_Subtype", 
+                      "paper_BRCA_Pathology", "er_status_by_ihc", 
+                      "pr_status_by_ihc", "her2_status_ihc_fish_y")
+
+# 2. Part A: Global Statistical Tests
+global_results <- map_df(clinical_factors, function(factor_col) {
+  df_clean <- clinical_df %>% 
+    filter(!is.na(.data[[factor_col]]), !is.na(til_percentage)) %>%
+    mutate(!!factor_col := as.factor(.data[[factor_col]]))
+  
+  levels_count <- n_distinct(df_clean[[factor_col]])
+  if (levels_count < 2) return(NULL)
+  
+  formula_str <- as.formula(paste("til_percentage ~", factor_col))
+  model <- lm(formula_str, data = df_clean, na.action = na.exclude)
+  shapiro_p <- shapiro.test(residuals(model))$p.value
+  is_normal <- shapiro_p >= 0.05
+  
+  if (is_normal) {
+    if (levels_count == 2) {
+      p_val <- t.test(formula_str, data = df_clean)$p.value
+      method_used <- "Independent t-test"
+    } else {
+      p_val <- summary(aov(formula_str, data = df_clean))[[1]]["Pr(>F)"][1, 1]
+      method_used <- "ANOVA"
+    }
+  } else {
+    if (levels_count == 2) {
+      p_val <- wilcox.test(formula_str, data = df_clean)$p.value
+      method_used <- "Wilcoxon rank-sum"
+    } else {
+      p_val <- kruskal.test(formula_str, data = df_clean)$p.value
+      method_used <- "Kruskal-Wallis"
+    }
+  }
+  
+  tibble(Factor = factor_col, Levels = levels_count, Method = method_used, p_value = p_val)
+})
+
+
+# 3. Part B: Conditional Post-Hoc Testing
+#library(dunn.test)
+# We loop through the global results and run post-hoc if Levels > 2 and adj_p_value < 0.05
+post_hoc_summaries <- map_chr(1:nrow(global_results), function(i) {
+  row <- global_results[i, ]
+  factor_col <- row$Factor
+  
+  # Condition: Needs post-hoc only if more than 2 levels AND globally significant
+  if (row$Levels > 2 && !is.na(row$p_value) && row$p_value <= 0.05) {
+    
+    df_clean <- clinical_df %>% 
+      filter(!is.na(.data[[factor_col]]), !is.na(til_percentage))
+    
+    # Run pairwise Wilcoxon with BH adjustment for the groups
+    dunn_result <- dunn.test(df_clean$til_percentage, df_clean[[factor_col]], 
+                             method = "bh", kw = FALSE)
+    # dunn_result$comparisons ya viene como "GroupA - GroupB"
+    # dunn_result$P.adjusted ya es el adj_p_value (BH) del post-hoc
+    sig_idx <- which(dunn_result$P.adjusted < 0.05)
+    
+    if (length(sig_idx) == 0) return("No significant pairwise differences")
+    
+    sig_pairs <- sapply(sig_idx, function(k) {
+      p_pair <- dunn_result$P.adjusted[k]
+      p_str <- if (p_pair < 0.001) "<0.001" else sprintf("%.3f", p_pair)
+      paste0(dunn_result$comparisons[k], " (adj.p=", p_str, ")")
+    })
+    
+    return(paste(sig_pairs, collapse = "; "))
+    
+  } else if (row$Levels == 2 && !is.na(row$p_value) && row$p_value <= 0.05) {
+    return("N/A (Only 2 levels)")
+  } else {
+    return("-") # No significativo globalmente (p crudo > 0.05), no se corre post-hoc
+  }
+})
+
+# Bind post-hoc results back to global results
+global_results$Post_Hoc_Analysis <- post_hoc_summaries
+
+
+# 4. Part C: Calculate Descriptive Stats per Level
+descriptive_stats <- map_df(clinical_factors, function(factor_col) {
+  clinical_df %>%
+    filter(!is.na(.data[[factor_col]]), !is.na(til_percentage)) %>%
+    group_by(Level = as.character(.data[[factor_col]])) %>%
+    summarise(
+      N = n(),
+      Summary_Stat = sprintf("%.1f%% (%.1f-%.1f)", 
+                             median(til_percentage), 
+                             quantile(til_percentage, 0.25), 
+                             quantile(til_percentage, 0.75)),
+      .groups = "drop"
+    ) %>%
+    mutate(Factor = factor_col)
+})
+
+
+# 5. Part D: Merge and Clean for Display
+table_data <- descriptive_stats %>%
+  left_join(global_results, by = "Factor") %>%
+  mutate(
+    p_value = if_else(p_value < 0.001, "< 0.001", sprintf("%.3f", p_value)),
+    Factor = gsub("_", " ", Factor),
+    Factor = tools::toTitleCase(Factor)
+  ) %>%
+  select(Factor, Level, N, Summary_Stat, Method, p_value, Post_Hoc_Analysis)
+
+
+# 6. Part E: Generate the Updated Table 2
+table_2_updated <- table_data %>%
+  gt(groupname_col = "Factor") %>%
+  tab_header(
+    title = "Table 2: Association of TIL Percentage with Patient Clinical Characteristics",
+    subtitle = "With automated Benjamini-Hochberg adjusted post-hoc pairwise comparisons"
+  ) %>%
+  cols_label(
+    Level = "Characteristic Level",
+    N = "N",
+    Summary_Stat = "Median TIL % (IQR)",
+    Method = "Global Test",
+    p_value = "Global p-value",
+    Post_Hoc_Analysis = "Significant Pairwise Differences (Post-Hoc, BH-adj)"
+  ) %>%
+  cols_align(align = "left", columns = c(Level, Post_Hoc_Analysis)) %>%
+  cols_align(align = "center", columns = c(N, Summary_Stat, Method, p_value)) %>%
+  tab_options(
+    row_group.font.weight = "bold",
+    heading.title.font.weight = "bold",
+    table.border.top.color = "black",
+    table.border.bottom.color = "black",
+    table_body.border.bottom.color = "black",
+    column_labels.border.bottom.color = "black",
+    column_labels.border.top.color = "black"
+  )
+
+# Preview Table
+print(table_2_updated)
+
+### Guardar resultados en una tabla exportable
+#library(openxlsx)
+#library(dplyr)
+table_data
+write.xlsx(table_data, pathLocalResults("HE clas Results/TIL_percentage_among_clinical_factors_1.xlsx"))
